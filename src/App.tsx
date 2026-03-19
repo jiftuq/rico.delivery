@@ -379,7 +379,7 @@ export default function App(){
     </main>
     <div className="dz-bottom-nav">{NAV.map(n=><button key={n.id} className={view===n.id?"active":""} onClick={()=>setView(n.id)}><span className="ni">{n.i}</span>{translate(n.lk)}</button>)}</div>
     {toast&&<div style={{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",padding:"10px 20px",borderRadius:12,background:"rgba(11,12,18,0.95)",border:"1px solid rgba(0,255,135,0.18)",color:"#00ff87",fontSize:12,fontWeight:600,zIndex:9999,animation:"slideT .3s ease",backdropFilter:"blur(12px)",whiteSpace:"nowrap"}}>{toast}</div>}
-    {showLangMenu&&<div style={{position:"fixed",inset:0,zIndex:1999}} onClick={()=>setShowLangMenu(false)}/>}
+    {showLangMenu&&<div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowLangMenu(false)}/>}
   </div>
   </LangCtx.Provider></WalletCtx.Provider>;
 }
