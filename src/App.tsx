@@ -257,6 +257,10 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
   const visible=unique.filter(tk=>{if(tk.status==="completed"||tk.status==="cancelled")return false;return(cat==="all"||tk.category===cat)&&tk.title.toLowerCase().includes(search.toLowerCase())});
   const catLabels:{[k:string]:string}={all:t("all"),food:t("food"),grocery:t("grocery"),errand:t("errand")};
   return <div style={{paddingTop:20}}>
+    <div style={{textAlign:"center",marginBottom:24}}>
+      <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>Anything delivered.</h1>
+      <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>Chat. Track. Rate.</p>
+    </div>
     <h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("live_tasks")}</h2>
     <p style={{fontSize:12,color:"#3a3a4a",marginTop:2}}>{openTasks.length} {t("open_tap")}</p>
     <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:"0 14px",marginTop:12,marginBottom:10}}><span>🔍</span><input style={{flex:1,background:"none",border:"none",color:"#fff",fontSize:14,padding:"12px 0",fontFamily:"'Outfit',sans-serif"}} placeholder={t("search")} value={search} onChange={e=>setSearch(e.target.value)}/></div>

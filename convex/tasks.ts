@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-const FEE_RATE = 0.01;
+const FEE_RATE = 0.07;
 
 export const create = mutation({
   args: {

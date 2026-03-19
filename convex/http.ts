@@ -182,7 +182,7 @@ const confirmDelivery = httpAction(async (ctx, request) => {
   }
   if (!courier) return json({ error: "Courier not found" }, 400, origin);
 
-  const FEE_RATE = 0.01;
+  const FEE_RATE = 0.07;
   const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
   const payout = task.totalEscrowed - burn;
 
