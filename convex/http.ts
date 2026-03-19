@@ -34,7 +34,7 @@ function buildRequirements(totalUSDC: number, resource: string, description: str
     payTo: RECEIVING_WALLET,
     maxTimeoutSeconds: 300,
     asset: USDC_ADDRESS,
-    extra: { name: "DROPZONE", version: "1" },
+    extra: { name: "GIGS.MOM", version: "1" },
   };
 }
 
@@ -62,7 +62,7 @@ const postTask = httpAction(async (ctx, request) => {
   const totalUSDC = Math.max(itemCost + suggestedFee, 0.01);
 
   const resource = new URL("/task", request.url).toString();
-  const requirements = buildRequirements(totalUSDC, resource, `DROPZONE task: $${totalUSDC.toFixed(2)} USDC`);
+  const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`);
 
   const paymentHeader = request.headers.get("X-Payment");
   if (!paymentHeader) return send402(requirements, origin);
@@ -109,7 +109,7 @@ const acceptBid = httpAction(async (ctx, request) => {
   // Courier bid higher → poster pays the difference via x402
   if (diff > 0.001) {
     const resource = new URL("/accept-bid", request.url).toString();
-    const requirements = buildRequirements(diff, resource, `DROPZONE extra fee: $${diff.toFixed(2)} USDC`);
+    const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`);
     const paymentHeader = request.headers.get("X-Payment");
     if (!paymentHeader) return send402(requirements, origin);
     const result: any = await ctx.runAction(internal.payments.verifyX402, {
