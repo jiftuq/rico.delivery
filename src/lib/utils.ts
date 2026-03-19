@@ -15,6 +15,7 @@ export const STS: Record<string, { l: string; c: string; bg: string }> = {
   in_progress: { l: "LIVE", c: "#ffd000", bg: "rgba(255,208,0,0.07)" },
   delivered: { l: "CONFIRM", c: "#00b4ff", bg: "rgba(0,180,255,0.07)" },
   completed: { l: "DONE", c: "#555", bg: "rgba(85,85,85,0.07)" },
+  disputed: { l: "DISPUTED", c: "#ffa500", bg: "rgba(255,165,0,0.07)" },
 };
 
 export function sRand(seed: number) {

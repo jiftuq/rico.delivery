@@ -44,6 +44,10 @@ export default defineSchema({
     createdAt: v.number(),
     acceptedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    disputeReason: v.optional(v.string()),
+    disputeBy: v.optional(v.string()),
+    disputedAt: v.optional(v.number()),
   })
     .index("by_status", ["status"])
     .index("by_poster", ["posterId"])
