@@ -849,7 +849,7 @@ function HowView(){
 }
 
 export default function App(){
-  const[view,setView]=useState("home");const userLoc=useGPS();const[toast,setToast]=useState<string|null>(null);
+  const[view,setView]=useState("how");const userLoc=useGPS();const[toast,setToast]=useState<string|null>(null);
   const[lang,setLang]=useState<Lang>(()=>detectLang());
   const[showLangMenu,setShowLangMenu]=useState(false);
   const[walletAddr,setWalletAddr]=useState<string|null>(null);
@@ -859,7 +859,7 @@ export default function App(){
     args.forEach((a,i)=>{s=s.replace(`{${i}}`,a)});return s;
   };
   const changeLang=(l:Lang)=>{setLang(l);localStorage.setItem("dz_lang",l);setShowLangMenu(false)};
-  const NAV=[{id:"home",lk:"nav_tasks" as const,i:"⚡"},{id:"post",lk:"nav_post" as const,i:"📝"},{id:"wallet",lk:"nav_wallet" as const,i:"◆"},{id:"how",lk:"nav_how" as const,i:"❓"}];
+  const NAV=[{id:"how",lk:"nav_how" as const,i:"◆"},{id:"home",lk:"nav_tasks" as const,i:"⚡"},{id:"post",lk:"nav_post" as const,i:"📝"},{id:"wallet",lk:"nav_wallet" as const,i:"👤"}];
   return <WalletCtx.Provider value={{walletAddr,connect}}><LangCtx.Provider value={translate}>
   <div style={{minHeight:"100vh",background:"#0b0c12",color:"#bbb",fontFamily:"'Outfit',sans-serif"}}><style>{CSS}</style>
     <header style={{position:"sticky",top:0,zIndex:1000,background:"rgba(11,12,18,0.92)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
