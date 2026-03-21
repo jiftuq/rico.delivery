@@ -34,7 +34,7 @@ function buildRequirements(totalUSDC: number, resource: string, description: str
     payTo: receivingWallet,
     maxTimeoutSeconds: 300,
     asset: USDC_ADDRESS,
-    extra: { name: "GIGS.MOM", version: "1" },
+    extra: { name: "USD Coin", version: "2" },
   };
 }
 
