@@ -251,6 +251,19 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
     {open&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.025)"}} onClick={e=>e.stopPropagation()}>
       {chatActive&&<div style={{display:"flex",gap:6,marginBottom:10}}><button style={{...S.tabBtn,...(tab==="details"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("details")}>📋 {t("details")}</button><button style={{...S.tabBtn,...(tab==="chat"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("chat")}>💬 {t("chat")}</button></div>}
       {tab==="chat"&&chatActive&&userId&&canSee?<ChatPanel taskId={task._id} userId={userId} myRole={isOwner?"poster":"courier"}/>:<>
+        {task.movingDetails&&<div style={{padding:12,borderRadius:12,background:"rgba(225,112,85,0.04)",border:"1px solid rgba(225,112,85,0.15)",marginBottom:10}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e17055",marginBottom:8}}>🚚 Moving Details</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px",fontSize:11}}>
+            <div><span style={{color:"#666"}}>Size:</span> <span style={{color:"#fff"}}>{task.movingDetails.apartmentSize?.toUpperCase()}</span></div>
+            <div><span style={{color:"#666"}}>Vehicle:</span> <span style={{color:"#fff"}}>{task.movingDetails.vehicleType}</span></div>
+            {(task.movingDetails.floorFrom>0||task.movingDetails.floorTo>0)&&<>
+              <div><span style={{color:"#666"}}>From floor:</span> <span style={{color:"#fff"}}>{task.movingDetails.floorFrom}{task.movingDetails.elevatorFrom?" ✓ elevator":""}</span></div>
+              <div><span style={{color:"#666"}}>To floor:</span> <span style={{color:"#fff"}}>{task.movingDetails.floorTo}{task.movingDetails.elevatorTo?" ✓ elevator":""}</span></div>
+            </>}
+            {task.movingDetails.moveDate&&<div style={{gridColumn:"1/-1"}}><span style={{color:"#666"}}>Date:</span> <span style={{color:"#fff"}}>{task.movingDetails.moveDate}</span></div>}
+          </div>
+          {task.movingDetails.inventoryList&&<div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(225,112,85,0.1)"}}><div style={{fontSize:10,color:"#666",marginBottom:3}}>📋 Inventory</div><div style={{fontSize:11,color:"#ccc",lineHeight:1.5}}>{task.movingDetails.inventoryList}</div></div>}
+        </div>}
         {isDel?<TaskMap pickup={{lat:task.pickupLat,lng:task.pickupLng,addr:task.pickupAddr}} dropoff={{lat:task.dropoffLat,lng:task.dropoffLng,addr:task.dropoffAddr||""}} privacyZone={task.privacyZone} courierLat={task.courierLat} courierLng={task.courierLng} bids={task.status==="open"?bidMap:undefined} userLoc={userLoc} showExact={!!canSee} tracking={!!isTracking} h={isTracking?320:240}/>
         :<TaskMap pickup={{lat:locLat,lng:locLng,addr:locAddr}} dropoff={{lat:locLat,lng:locLng,addr:locAddr}} privacyZone={task.privacyZone} courierLat={task.courierLat} courierLng={task.courierLng} bids={task.status==="open"?bidMap:undefined} userLoc={userLoc} showExact={!!canSee} tracking={!!isTracking} h={isTracking?320:240} singleLocation/>}
         {isTracking&&<div style={S.trackBar}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700}}>{t("live")}</span><span style={{color:"#777"}}>{t("tracking")}</span></div>}
@@ -388,16 +401,19 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const[taskType,setTaskType]=useState("delivery");
   const[f,sF]=useState({title:"",pickupAddr:"",dropoffAddr:"",locationAddr:"",suggestedFee:"",details:"",action:"",category:"delivery",privacyZone:"100",proofType:"photo",targetPerson:""});
   const[items,setItems]=useState([{name:"",cost:""}]);const[maxRunners,setMaxRunners]=useState("1");
+  const[moving,setMoving]=useState({apartmentSize:"1br",floorFrom:"0",floorTo:"0",elevatorFrom:false,elevatorTo:false,vehicleType:"van",inventoryList:"",moveDate:""});
+  const isMoving=taskType==="delivery"&&f.category==="moving";
+  const setMov=(k:string)=>(e:any)=>setMoving(p=>({...p,[k]:typeof e==="boolean"?e:e.target.value}));
   const[ok,setOk]=useState(false);const[pLat,sPLat]=useState(0);const[pLng,sPLng]=useState(0);const[dLat,sDLat]=useState(0);const[dLng,sDLng]=useState(0);const[lLat,sLLat]=useState(0);const[lLng,sLLng]=useState(0);
   const set=(k:string)=>(e:any)=>sF({...f,[k]:e.target.value});
   const setItem=(i:number,k:string,v:string)=>setItems(items.map((it,idx)=>idx===i?{...it,[k]:v}:it));
   const addItem=()=>setItems([...items,{name:"",cost:""}]);
   const removeItem=(i:number)=>setItems(items.filter((_,idx)=>idx!==i));
   const tt=TASK_TYPES.find(x=>x.id===taskType)||TASK_TYPES[0];
-  const itemCostTotal=tt.needsItems?items.reduce((s,it)=>s+(parseFloat(it.cost)||0),0):0;
+  const itemCostTotal=(tt.needsItems&&!isMoving)?items.reduce((s,it)=>s+(parseFloat(it.cost)||0),0):0;
   const nRunners=Math.max(1,parseInt(maxRunners)||1);
   const feePerRunner=parseFloat(f.suggestedFee)||0;
-  const total=nRunners>1?feePerRunner*nRunners:itemCostTotal+feePerRunner;
+  const total=(isMoving||nRunners>1)?feePerRunner*nRunners:itemCostTotal+feePerRunner;
   const onPickup=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,pickupAddr:addr}));sPLat(lat);sPLng(lng)};
   const onDropoff=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,dropoffAddr:addr}));sDLat(lat);sDLng(lng)};
   const onLocation=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,locationAddr:addr}));sLLat(lat);sLLng(lng)};
@@ -405,13 +421,14 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     if(!f.title||!userId)return;
     if(taskType==="delivery"&&(!f.pickupAddr||!f.dropoffAddr))return;
     if(taskType!=="delivery"&&!f.locationAddr)return;
-    if(taskType==="delivery"){const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);if(validItems.length===0)return;}
+    if(taskType==="delivery"&&!isMoving){const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);if(validItems.length===0)return;}
     if(!walletAddr){await connect();return;}
     try{
       const body:any={title:f.title,category:f.category,details:f.details||f.action||"No instructions.",taskType,privacyZone:parseInt(f.privacyZone)||100,suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId};
       if(taskType==="delivery"){
         const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);
-        Object.assign(body,{pickupAddr:f.pickupAddr,pickupLat:pLat||50.85,pickupLng:pLng||4.35,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85,dropoffLng:dLng||4.35,itemCost:itemCostTotal,items:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)}))});
+        Object.assign(body,{pickupAddr:f.pickupAddr,pickupLat:pLat||50.85,pickupLng:pLng||4.35,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85,dropoffLng:dLng||4.35,itemCost:isMoving?0:itemCostTotal,items:isMoving?[]:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)}))});
+        if(isMoving){body.movingDetails={apartmentSize:moving.apartmentSize,floorFrom:parseInt(moving.floorFrom)||0,floorTo:parseInt(moving.floorTo)||0,elevatorFrom:moving.elevatorFrom,elevatorTo:moving.elevatorTo,vehicleType:moving.vehicleType,inventoryList:moving.inventoryList||undefined,moveDate:moving.moveDate||undefined};body.maxRunners=nRunners;}
       }else{
         Object.assign(body,{locationAddr:f.locationAddr,locationLat:lLat||50.85,locationLng:lLng||4.35,action:f.action,proofType:f.proofType,targetPerson:f.targetPerson||undefined});
       }
@@ -432,10 +449,19 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     <div className="dz-form-grid">
       <div><label style={S.fLbl}>{t("what")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={taskType==="delivery"?t("what_ph"):"Task title..."} value={f.title} onChange={set("title")}/></div>
       {taskType!=="delivery"&&<div><label style={S.fLbl}>Category</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="errand">🏃 Errand</option><option value="social">👋 Social</option><option value="info">🔍 Info</option><option value="verification">✅ Verify</option><option value="custom">⚙️ Custom</option></select></div>}
-      {taskType==="delivery"&&<div><label style={S.fLbl}>{t("category")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="delivery">📦 Delivery</option><option value="food">🍔 {t("food")}</option><option value="grocery">🛒 {t("grocery")}</option><option value="errand">📦 {t("errand")}</option></select></div>}
+      {taskType==="delivery"&&<div><label style={S.fLbl}>{t("category")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="delivery">📦 Delivery</option><option value="food">🍔 {t("food")}</option><option value="grocery">🛒 {t("grocery")}</option><option value="moving">🚚 {t("moving")}</option><option value="errand">📦 {t("errand")}</option></select></div>}
       {taskType==="delivery"&&<>
-        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("pickup")}</label><AddressMapPicker label={t("pickup_ph")} value={f.pickupAddr} lat={pLat} lng={pLng} onSelect={onPickup} userLoc={userLoc}/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("dropoff")}</label><AddressMapPicker label={t("dropoff_ph")} value={f.dropoffAddr} lat={dLat} lng={dLng} onSelect={onDropoff} userLoc={userLoc}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{isMoving?"🏠 Moving from":"📍 "+t("pickup")}</label><AddressMapPicker label={isMoving?"Current address":t("pickup_ph")} value={f.pickupAddr} lat={pLat} lng={pLng} onSelect={onPickup} userLoc={userLoc}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{isMoving?"🏠 Moving to":"📍 "+t("dropoff")}</label><AddressMapPicker label={isMoving?"New address":t("dropoff_ph")} value={f.dropoffAddr} lat={dLat} lng={dLng} onSelect={onDropoff} userLoc={userLoc}/></div>
+        {isMoving&&<>
+          <div><label style={S.fLbl}>🏠 Apartment size</label><select style={{...S.fInp,fontSize:14,padding:12}} value={moving.apartmentSize} onChange={setMov("apartmentSize")}><option value="studio">Studio</option><option value="1br">1 Bedroom</option><option value="2br">2 Bedrooms</option><option value="3br">3 Bedrooms</option><option value="4br+">4+ Bedrooms</option><option value="office">Office</option><option value="storage">Storage unit</option></select></div>
+          <div><label style={S.fLbl}>🚚 Vehicle needed</label><select style={{...S.fInp,fontSize:14,padding:12}} value={moving.vehicleType} onChange={setMov("vehicleType")}><option value="van">Van</option><option value="truck">Truck</option><option value="any">Any vehicle</option></select></div>
+          <div><label style={S.fLbl}>⬆️ Floor (from)</label><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="number" min="0" max="50" style={{...S.fInp,fontSize:14,padding:12,flex:1}} placeholder="0" value={moving.floorFrom} onChange={setMov("floorFrom")}/><label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#888",whiteSpace:"nowrap"}}><input type="checkbox" checked={moving.elevatorFrom} onChange={e=>setMoving(p=>({...p,elevatorFrom:e.target.checked}))}/>Elevator</label></div></div>
+          <div><label style={S.fLbl}>⬇️ Floor (to)</label><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="number" min="0" max="50" style={{...S.fInp,fontSize:14,padding:12,flex:1}} placeholder="0" value={moving.floorTo} onChange={setMov("floorTo")}/><label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#888",whiteSpace:"nowrap"}}><input type="checkbox" checked={moving.elevatorTo} onChange={e=>setMoving(p=>({...p,elevatorTo:e.target.checked}))}/>Elevator</label></div></div>
+          <div><label style={S.fLbl}>📅 Move date</label><input type="date" style={{...S.fInp,fontSize:14,padding:12}} value={moving.moveDate} onChange={setMov("moveDate")}/></div>
+          <div><label style={S.fLbl}>👥 Movers needed</label><input type="number" min="1" max="20" style={{...S.fInp,fontSize:14,padding:12}} placeholder="2" value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/>{nRunners>1&&<div style={{fontSize:9,color:"#ffd000",marginTop:3}}>⚡ {nRunners} movers × ${feePerRunner.toFixed(2)} = ${total.toFixed(2)} USDC total</div>}</div>
+          <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>📋 What's being moved?</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder="e.g. 2 sofas, dining table + 4 chairs, queen bed, 15 boxes, washing machine..." value={moving.inventoryList} onChange={setMov("inventoryList")}/></div>
+        </>}
       </>}
       {taskType!=="delivery"&&<>
         <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>📍 Location</label><AddressMapPicker label="Where should the runner go?" value={f.locationAddr} lat={lLat} lng={lLng} onSelect={onLocation} userLoc={userLoc}/></div>
@@ -448,7 +474,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.privacyZone} onChange={set("privacyZone")}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
       {taskType==="delivery"&&<div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("instructions")}</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder={t("instructions_ph")} value={f.details} onChange={set("details")}/></div>}
     </div>
-    {tt.needsItems&&<div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><label style={S.fLbl}>🛒 {t("items")}</label><button style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,255,135,0.15)",background:"rgba(0,255,135,0.04)",color:"#00ff87",fontFamily:"'Outfit',sans-serif"}} onClick={addItem}>{t("add_item")}</button></div>
+    {tt.needsItems&&!isMoving&&<div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><label style={S.fLbl}>🛒 {t("items")}</label><button style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,255,135,0.15)",background:"rgba(0,255,135,0.04)",color:"#00ff87",fontFamily:"'Outfit',sans-serif"}} onClick={addItem}>{t("add_item")}</button></div>
       {items.map((it,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
         <input style={{...S.fInp,flex:2,fontSize:13,padding:"10px 12px"}} placeholder={t("item_name")} value={it.name} onChange={e=>setItem(i,"name",e.target.value)}/>
         <input style={{...S.fInp,flex:1,fontSize:13,padding:"10px 12px"}} placeholder={t("cost")} value={it.cost} onChange={e=>setItem(i,"cost",e.target.value)}/>
@@ -456,8 +482,15 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       </div>)}
     </div>}
     <div style={{...S.escBox,marginTop:12}}>
-      {tt.needsItems&&items.filter(it=>it.name&&parseFloat(it.cost)>0).map((it,i)=><div key={i} style={S.escR}><span>{it.name}</span><span>{parseFloat(it.cost).toFixed(1)}</span></div>)}
-      <div style={S.escR}><span>{taskType==="delivery"?"🚴 "+t("delivery_lbl"):"🏃 Runner fee"}{nRunners>1?` × ${nRunners}`:""}</span><span>{nRunners>1?`${feePerRunner||0} × ${nRunners}`:(f.suggestedFee||"0")}</span></div>
+      {isMoving&&<>
+        <div style={S.escR}><span>🏠 {moving.apartmentSize.toUpperCase()}</span><span>🚚 {moving.vehicleType}</span></div>
+        {(parseInt(moving.floorFrom)||0)>0&&<div style={S.escR}><span>⬆️ Floor {moving.floorFrom}{moving.elevatorFrom?" (elevator)":""}</span><span>→</span></div>}
+        {(parseInt(moving.floorTo)||0)>0&&<div style={S.escR}><span>⬇️ Floor {moving.floorTo}{moving.elevatorTo?" (elevator)":""}</span><span></span></div>}
+        {moving.moveDate&&<div style={S.escR}><span>📅 {moving.moveDate}</span><span></span></div>}
+        <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/>
+      </>}
+      {tt.needsItems&&!isMoving&&items.filter(it=>it.name&&parseFloat(it.cost)>0).map((it,i)=><div key={i} style={S.escR}><span>{it.name}</span><span>{parseFloat(it.cost).toFixed(1)}</span></div>)}
+      <div style={S.escR}><span>{isMoving?`🚚 ${nRunners} mover${nRunners>1?"s":""}`:taskType==="delivery"?"🚴 "+t("delivery_lbl"):"🏃 Runner fee"}{!isMoving&&nRunners>1?` × ${nRunners}`:""}</span><span>{(isMoving||nRunners>1)?`${feePerRunner||0} × ${nRunners}`:(f.suggestedFee||"0")}</span></div>
       <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>🔒 {t("total")}</span><span style={{fontWeight:700,color:"#00ff87"}}>${total.toFixed(2)} USDC</span></div>
     </div>
     {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}

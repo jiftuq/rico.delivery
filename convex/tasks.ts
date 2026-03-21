@@ -31,6 +31,17 @@ export const create = mutation({
     action: v.optional(v.string()),
     proofType: v.optional(v.string()),
     targetPerson: v.optional(v.string()),
+    // Moving-specific
+    movingDetails: v.optional(v.object({
+      apartmentSize: v.string(),
+      floorFrom: v.optional(v.number()),
+      floorTo: v.optional(v.number()),
+      elevatorFrom: v.optional(v.boolean()),
+      elevatorTo: v.optional(v.boolean()),
+      vehicleType: v.string(),
+      inventoryList: v.optional(v.string()),
+      moveDate: v.optional(v.string()),
+    })),
     // Delivery-specific (optional)
     pickupAddr: v.optional(v.string()), pickupLat: v.optional(v.float64()), pickupLng: v.optional(v.float64()),
     dropoffAddr: v.optional(v.string()), dropoffLat: v.optional(v.float64()), dropoffLng: v.optional(v.float64()),
@@ -67,6 +78,8 @@ export const create = mutation({
       doc.dropoffAddr = args.dropoffAddr; doc.dropoffLat = args.dropoffLat; doc.dropoffLng = args.dropoffLng;
       // Also set location to pickup for generic queries
       doc.locationAddr = args.pickupAddr; doc.locationLat = args.pickupLat; doc.locationLng = args.pickupLng;
+      // Moving details
+      if (args.movingDetails) doc.movingDetails = args.movingDetails;
     } else {
       // Generic tasks need a location
       if (!args.locationAddr) throw new Error("Task needs a location");

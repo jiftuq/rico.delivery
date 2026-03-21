@@ -33,6 +33,17 @@ export default defineSchema({
     proofType: v.optional(v.string()), // photo, video, text, gps, none
     proofData: v.optional(v.string()), // submitted proof from runner
     targetPerson: v.optional(v.string()),
+    // Moving-specific
+    movingDetails: v.optional(v.object({
+      apartmentSize: v.string(), // studio, 1br, 2br, 3br, 4br+, office, storage
+      floorFrom: v.optional(v.number()),
+      floorTo: v.optional(v.number()),
+      elevatorFrom: v.optional(v.boolean()),
+      elevatorTo: v.optional(v.boolean()),
+      vehicleType: v.string(), // van, truck, any
+      inventoryList: v.optional(v.string()), // free text: "2 sofas, 1 table, 10 boxes..."
+      moveDate: v.optional(v.string()), // ISO date
+    })),
     // Delivery-specific (optional for non-delivery tasks)
     pickupAddr: v.optional(v.string()),
     pickupLat: v.optional(v.float64()),
