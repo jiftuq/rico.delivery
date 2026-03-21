@@ -6,6 +6,17 @@ import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
 import { connectWallet, payFetch, SERVER_URL } from "./lib/wallet";
 
+// Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
+const hap={
+  tap:()=>navigator.vibrate?.(10),
+  light:()=>navigator.vibrate?.(25),
+  medium:()=>navigator.vibrate?.(50),
+  heavy:()=>navigator.vibrate?.(100),
+  success:()=>navigator.vibrate?.([30,50,30]),
+  double:()=>navigator.vibrate?.([25,40,25]),
+  error:()=>navigator.vibrate?.([80,30,80,30,80]),
+};
+
 const LangCtx = createContext<(k: keyof TranslationKeys, ...args: string[]) => string>(() => "");
 function useLang() { return useContext(LangCtx); }
 
@@ -144,7 +155,7 @@ function ChatPanel({taskId,userId,myRole}:{taskId:Id<"tasks">;userId:Id<"users">
     return items;
   },[messages,proofFiles]);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[timeline.length]);
-  const doSend=()=>{if(!msg.trim())return;send(userId,msg.trim());setMsg("")};
+  const doSend=()=>{if(!msg.trim())return;hap.light();send(userId,msg.trim());setMsg("")};
   return <div style={{borderRadius:12,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
     <div style={{padding:"10px 14px",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.03)",fontSize:13,fontWeight:600,color:"#fff"}}>💬 {t("chat")}</div>
     <div style={{maxHeight:340,overflowY:"auto",padding:"10px 14px",WebkitOverflowScrolling:"touch"}}>
@@ -178,10 +189,10 @@ function RatingModal({name,onRate,onClose}:{name:string;onRate:(s:number,c:strin
   return <div style={S.overlay} onClick={onClose}><div style={{background:"#14151e",borderRadius:18,padding:"28px 20px",maxWidth:360,width:"92%",border:"1px solid rgba(255,255,255,0.06)"}} onClick={e=>e.stopPropagation()}>
     <div style={{fontSize:20,fontWeight:700,color:"#fff",textAlign:"center",marginBottom:14}}>{t("rate")} {name}</div>
     <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:14}}>
-      {[1,2,3,4,5].map(n=><button key={n} onClick={()=>setScore(n)} style={{background:"none",border:"none",fontSize:36,color:n<=score?"#ffd000":"#2a2a3a",padding:4,minWidth:44,minHeight:44}}>★</button>)}
+      {[1,2,3,4,5].map(n=><button key={n} onClick={()=>{hap.tap();setScore(n)}} style={{background:"none",border:"none",fontSize:36,color:n<=score?"#ffd000":"#2a2a3a",padding:4,minWidth:44,minHeight:44}}>★</button>)}
     </div>
     <textarea style={{...S.fInp,minHeight:70,fontSize:14,marginBottom:14}} placeholder={t("review_ph")} value={text} onChange={e=>setText(e.target.value)}/>
-    <button style={{...S.postBtn,background:"linear-gradient(135deg,#ffd000,#ff8c00)"}} onClick={()=>{onRate(score,text);onClose()}}>{t("submit")}</button>
+    <button style={{...S.postBtn,background:"linear-gradient(135deg,#ffd000,#ff8c00)"}} onClick={()=>{hap.success();onRate(score,text);onClose()}}>{t("submit")}</button>
     <button style={{...S.postBtn,marginTop:8,background:"transparent",border:"1px solid rgba(255,255,255,0.06)",color:"#555"}} onClick={onClose}>{t("skip")}</button>
   </div></div>;
 }
@@ -246,13 +257,13 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   useCourierTracking(isTracking&&isActiveRunner?task._id:null,isActiveRunner&&userId?userId:null,!!isTracking&&isActiveRunner);
   useEffect(()=>{if(!open||!userLoc||task.status!=="open")return;if(isDel){getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]).then(r=>r&&setRouteKm(r.km))}else{getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]).then(r=>r&&setRouteKm(r.km))}},[open,userLoc]);
   const bidMap=bids.filter((b:any)=>b.lat&&b.lng).map((b:any)=>({name:b.courierName,lat:b.lat,lng:b.lng,fee:b.fee,score:b.courierScore}));
-  const submitBid=async()=>{if(!bidFee||!userId||!userLoc)return;let tripKm:number;if(isDel){const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10}else{const route=await getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]);tripKm=route?parseFloat(route.km):Math.round(haversine(userLoc,[locLat,locLng])*10)/10}actions.placeBid({taskId:task._id,courierId:userId,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});setBidFee("");setBidComment("")};
-  const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
-  const doCancel=async()=>{if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
-  const doSubmitProof=()=>{if(!isCourier||!userId)return;actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
-  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;setUploading(true);try{await uploadProof(file,task._id,userId)}catch(err:any){alert(err.message)}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
+  const submitBid=async()=>{if(!bidFee||!userId||!userLoc)return;let tripKm:number;if(isDel){const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10}else{const route=await getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]);tripKm=route?parseFloat(route.km):Math.round(haversine(userLoc,[locLat,locLng])*10)/10}actions.placeBid({taskId:task._id,courierId:userId,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});hap.success();setBidFee("");setBidComment("")};
+  const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.double()}catch(e:any){hap.error();alert(e.message)}};
+  const doCancel=async()=>{hap.medium();if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.heavy()}catch(e:any){hap.error();alert(e.message)}};
+  const doSubmitProof=()=>{if(!isCourier||!userId)return;hap.success();actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
+  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;hap.light();setUploading(true);try{await uploadProof(file,task._id,userId);hap.success()}catch(err:any){hap.error();alert(err.message)}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
   const ProofMenu=({btnStyle}:{btnStyle:any})=><div style={{position:"relative",display:"inline-block"}}>
-    <button style={btnStyle} onClick={(e)=>{e.stopPropagation();setShowProofMenu(!showProofMenu)}}>{uploading?"⏳":"📎 Proof"}</button>
+    <button style={btnStyle} onClick={(e)=>{e.stopPropagation();hap.tap();setShowProofMenu(!showProofMenu)}}>{uploading?"⏳":"📎 Proof"}</button>
     {showProofMenu&&<div style={{position:"absolute",bottom:"110%",left:0,zIndex:999,background:"#1a1a2e",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:6,display:"flex",flexDirection:"column",gap:4,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}} onClick={e=>e.stopPropagation()}>
       <button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",textAlign:"left",minHeight:0}} onClick={()=>filePhotoBackRef.current?.click()}>📷 Photo (back cam)</button>
       <button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",textAlign:"left",minHeight:0}} onClick={()=>filePhotoFrontRef.current?.click()}>🤳 Photo (selfie)</button>
@@ -261,7 +272,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
     </div>}
   </div>;
 
-  return <div style={{...S.card,borderLeft:`3px solid ${st.c}`}} onClick={()=>setOpen(!open)}>
+  return <div style={{...S.card,borderLeft:`3px solid ${st.c}`}} onClick={()=>{hap.tap();setOpen(!open)}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={S.cardCat}>{CATS.find(c=>c.id===task.category)?.i||"⚡"} {task.category}{!isDel&&task.taskType?` · ${task.taskType}`:""}</div>
@@ -349,7 +360,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           </div>}
         </div>}
         {task.status==="in_progress"&&!multi&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>{isDel?"🚴":"🏃"} {task.courierName}</span>
-          {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>
+          {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>{hap.medium();actions.markDelivered({taskId:task._id,courierId:userId!})}}>📦 {t("mark_delivered")}</button>
           :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
             <input ref={filePhotoBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
@@ -378,7 +389,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
             {tr.status==="completed"&&<span style={{fontSize:10,color:"#00ff87",fontWeight:700}}>✓</span>}
           </div>)}
         </div>}
-        {task.status==="delivered"&&isOwner&&!multi&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>setShowRating({name:task.courierName||"Runner"})}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
+        {task.status==="delivered"&&isOwner&&!multi&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>{hap.heavy();setShowRating({name:task.courierName||"Runner"})}}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
         {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for poster to confirm. Auto-releases in 2 hours.</div>}
         {task.proofData&&!multi&&<div style={{padding:10,borderRadius:10,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",marginTop:8,fontSize:12,color:"#a855f7"}}>📸 {t("proof_lbl")}: {task.proofData}</div>}
         {/* Uploaded proof files */}
@@ -393,7 +404,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
             </div>)}
           </div>
         </div>}
-        {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{const reason=prompt("Describe the issue:");if(reason&&userId)actions.openDispute({taskId:task._id,userId,reason})}}>⚠️ Open Dispute</button>}
+        {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{hap.error();const reason=prompt("Describe the issue:");if(reason&&userId)actions.openDispute({taskId:task._id,userId,reason})}}>⚠️ Open Dispute</button>}
         {task.status==="disputed"&&<div style={{padding:14,borderRadius:12,background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.2)",marginTop:8}}><div style={{fontSize:13,fontWeight:700,color:"#ffa500",marginBottom:4}}>⚠️ Disputed</div><div style={{fontSize:12,color:"#999"}}>Opened by {task.disputeBy}: "{task.disputeReason}"</div><div style={{fontSize:11,color:"#666",marginTop:4}}>Funds are held until resolved. Contact support.</div></div>}
       </>}
       {profileId&&profile&&<ProfilePopup profile={profile} onClose={()=>setProfileId(null)}/>}
@@ -562,9 +573,9 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       }
       const res=await payFetch(`${SERVER_URL}/task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if(!res.ok){const e=await res.json();throw new Error(e.error);}
-      setOk(true);setTimeout(()=>setOk(false),3500);
+      hap.success();setOk(true);setTimeout(()=>setOk(false),3500);
       setPreset(null);setTitle("");setSteps([]);setFee("");setMaxRunners("1");setDetails("");
-    }catch(e:any){alert(e.message);}
+    }catch(e:any){hap.error();alert(e.message);}
   };
 
   const presetBtnS=(active:boolean):any=>({padding:"10px 14px",borderRadius:12,border:active?"1px solid #00ff87":"1px solid rgba(255,255,255,0.06)",background:active?"rgba(0,255,135,0.06)":"rgba(255,255,255,0.015)",color:active?"#00ff87":"#999",fontSize:12,fontWeight:active?700:500,fontFamily:"'Outfit',sans-serif",textAlign:"left" as const,whiteSpace:"nowrap"});
