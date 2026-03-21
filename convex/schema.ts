@@ -33,16 +33,28 @@ export default defineSchema({
     proofType: v.optional(v.string()), // photo, video, text, gps, none
     proofData: v.optional(v.string()), // submitted proof from runner
     targetPerson: v.optional(v.string()),
-    // Moving-specific
+    // Workflow steps — the core of a task
+    steps: v.optional(v.array(v.object({
+      order: v.number(),
+      action: v.string(),           // "Go to restaurant", "Pick up order", "Deliver to customer"
+      locationAddr: v.optional(v.string()),
+      locationLat: v.optional(v.float64()),
+      locationLng: v.optional(v.float64()),
+      proofType: v.optional(v.string()),  // photo, video, text, gps, none
+      proofData: v.optional(v.string()),  // submitted proof for this step
+      requirements: v.optional(v.string()), // "van", "camera", "ID", etc.
+      status: v.optional(v.string()),       // pending, in_progress, completed
+    }))),
+    // Moving-specific (legacy, kept for backward compat)
     movingDetails: v.optional(v.object({
-      apartmentSize: v.string(), // studio, 1br, 2br, 3br, 4br+, office, storage
+      apartmentSize: v.string(),
       floorFrom: v.optional(v.number()),
       floorTo: v.optional(v.number()),
       elevatorFrom: v.optional(v.boolean()),
       elevatorTo: v.optional(v.boolean()),
-      vehicleType: v.string(), // van, truck, any
-      inventoryList: v.optional(v.string()), // free text: "2 sofas, 1 table, 10 boxes..."
-      moveDate: v.optional(v.string()), // ISO date
+      vehicleType: v.string(),
+      inventoryList: v.optional(v.string()),
+      moveDate: v.optional(v.string()),
     })),
     // Delivery-specific (optional for non-delivery tasks)
     pickupAddr: v.optional(v.string()),

@@ -251,6 +251,22 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
     {open&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.025)"}} onClick={e=>e.stopPropagation()}>
       {chatActive&&<div style={{display:"flex",gap:6,marginBottom:10}}><button style={{...S.tabBtn,...(tab==="details"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("details")}>📋 {t("details")}</button><button style={{...S.tabBtn,...(tab==="chat"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("chat")}>💬 {t("chat")}</button></div>}
       {tab==="chat"&&chatActive&&userId&&canSee?<ChatPanel taskId={task._id} userId={userId} myRole={isOwner?"poster":"courier"}/>:<>
+        {/* Workflow steps display */}
+        {task.steps&&task.steps.length>0&&<div style={{padding:12,borderRadius:12,background:"rgba(0,255,135,0.02)",border:"1px solid rgba(0,255,135,0.08)",marginBottom:10}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#00ff87",marginBottom:8}}>📋 Workflow ({task.steps.length} steps)</div>
+          {task.steps.map((s:any,i:number)=><div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:i<task.steps.length-1?6:0}}>
+            <div style={{width:20,height:20,borderRadius:"50%",background:s.status==="completed"?"rgba(0,255,135,0.15)":i===0?"rgba(255,208,0,0.12)":"rgba(255,255,255,0.04)",color:s.status==="completed"?"#00ff87":"#888",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,flexShrink:0,marginTop:1}}>{s.status==="completed"?"✓":s.order||i+1}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,color:s.status==="completed"?"#00ff87":"#ccc",fontWeight:500}}>{s.action}</div>
+              <div style={{display:"flex",gap:6,marginTop:2,flexWrap:"wrap"}}>
+                {s.locationAddr&&<span style={{fontSize:9,color:"#00b4ff"}}>📍 {s.locationAddr.split(",")[0]}</span>}
+                {s.requirements&&<span style={{fontSize:9,color:"#ffd000",background:"rgba(255,208,0,0.06)",padding:"1px 5px",borderRadius:4}}>⚡ {s.requirements}</span>}
+                {s.proofType&&s.proofType!=="none"&&<span style={{fontSize:9,color:"#a855f7"}}>📸 {s.proofType}</span>}
+              </div>
+              {s.proofData&&<div style={{fontSize:10,color:"#a855f7",marginTop:2}}>✓ {s.proofData}</div>}
+            </div>
+          </div>)}
+        </div>}
         {task.movingDetails&&<div style={{padding:12,borderRadius:12,background:"rgba(225,112,85,0.04)",border:"1px solid rgba(225,112,85,0.15)",marginBottom:10}}>
           <div style={{fontSize:12,fontWeight:700,color:"#e17055",marginBottom:8}}>🚚 Moving Details</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px",fontSize:11}}>
@@ -386,115 +402,176 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
   </div>;
 }
 
-const TASK_TYPES=[
-  {id:"delivery",l:"Delivery",i:"📦",needsDropoff:true,needsItems:true},
-  {id:"go-somewhere",l:"Go Somewhere",i:"📍",needsDropoff:false,needsItems:false},
-  {id:"interact",l:"Interact",i:"🤝",needsDropoff:false,needsItems:false},
-  {id:"gather-info",l:"Gather Info",i:"🔍",needsDropoff:false,needsItems:false},
-  {id:"physical-action",l:"Physical",i:"💪",needsDropoff:false,needsItems:false},
-  {id:"verification",l:"Verify",i:"✅",needsDropoff:false,needsItems:false},
-];
 const PROOF_TYPES=["photo","video","text","gps","none"];
+type WStep={action:string;locationAddr:string;locationLat:number;locationLng:number;proofType:string;requirements:string};
+const emptyStep=():WStep=>({action:"",locationAddr:"",locationLat:0,locationLng:0,proofType:"none",requirements:""});
+
+const WORKFLOW_PRESETS=[
+  {id:"food-delivery",l:"🍔 Food Delivery",cat:"food",taskType:"delivery",runners:1,
+    steps:[{action:"Go to restaurant",locationAddr:"",locationLat:0,locationLng:0,proofType:"none",requirements:""},
+           {action:"Pick up order",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""},
+           {action:"Deliver to customer",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""}]},
+  {id:"grocery",l:"🛒 Grocery Run",cat:"grocery",taskType:"delivery",runners:1,
+    steps:[{action:"Go to store",locationAddr:"",locationLat:0,locationLng:0,proofType:"none",requirements:""},
+           {action:"Buy items on list",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""},
+           {action:"Deliver to customer",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""}]},
+  {id:"moving",l:"🚚 Moving",cat:"moving",taskType:"delivery",runners:2,
+    steps:[{action:"Come to my place",locationAddr:"",locationLat:0,locationLng:0,proofType:"gps",requirements:"van"},
+           {action:"Load furniture into vehicle",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""},
+           {action:"Drive to new location",locationAddr:"",locationLat:0,locationLng:0,proofType:"gps",requirements:""},
+           {action:"Unload and place furniture",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""}]},
+  {id:"gather-info",l:"🔍 Gather Info",cat:"info",taskType:"gather-info",runners:1,
+    steps:[{action:"Go to location",locationAddr:"",locationLat:0,locationLng:0,proofType:"none",requirements:""},
+           {action:"Photograph / observe / report",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""}]},
+  {id:"verification",l:"✅ Verify",cat:"verification",taskType:"verification",runners:1,
+    steps:[{action:"Go to address",locationAddr:"",locationLat:0,locationLng:0,proofType:"gps",requirements:""},
+           {action:"Confirm person lives here",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""}]},
+  {id:"standin",l:"📍 Stand-in / Flash Mob",cat:"social",taskType:"go-somewhere",runners:10,
+    steps:[{action:"Go to location",locationAddr:"",locationLat:0,locationLng:0,proofType:"gps",requirements:""},
+           {action:"Be present for the specified time",locationAddr:"",locationLat:0,locationLng:0,proofType:"gps",requirements:""}]},
+  {id:"interact",l:"🤝 Interact / Negotiate",cat:"errand",taskType:"interact",runners:1,
+    steps:[{action:"Go to location",locationAddr:"",locationLat:0,locationLng:0,proofType:"none",requirements:""},
+           {action:"Talk to person / negotiate",locationAddr:"",locationLat:0,locationLng:0,proofType:"text",requirements:""},
+           {action:"Report result",locationAddr:"",locationLat:0,locationLng:0,proofType:"text",requirements:""}]},
+  {id:"physical",l:"💪 Physical Action",cat:"errand",taskType:"physical-action",runners:1,
+    steps:[{action:"Go to location",locationAddr:"",locationLat:0,locationLng:0,proofType:"gps",requirements:""},
+           {action:"Perform the action",locationAddr:"",locationLat:0,locationLng:0,proofType:"photo",requirements:""}]},
+  {id:"custom",l:"⚙️ Custom Workflow",cat:"custom",taskType:"gather-info",runners:1,
+    steps:[{action:"Step 1",locationAddr:"",locationLat:0,locationLng:0,proofType:"none",requirements:""}]},
+];
 
 function PostView({userLoc}:{userLoc:[number,number]|null}){
-  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);const{createTask}=useTaskActions();
-  const[taskType,setTaskType]=useState("delivery");
-  const[f,sF]=useState({title:"",pickupAddr:"",dropoffAddr:"",locationAddr:"",suggestedFee:"",details:"",action:"",category:"delivery",privacyZone:"100",proofType:"photo",targetPerson:""});
-  const[items,setItems]=useState([{name:"",cost:""}]);const[maxRunners,setMaxRunners]=useState("1");
-  const[moving,setMoving]=useState({apartmentSize:"1br",floorFrom:"0",floorTo:"0",elevatorFrom:false,elevatorTo:false,vehicleType:"van",inventoryList:"",moveDate:""});
-  const isMoving=taskType==="delivery"&&f.category==="moving";
-  const setMov=(k:string)=>(e:any)=>setMoving(p=>({...p,[k]:typeof e==="boolean"?e:e.target.value}));
-  const[ok,setOk]=useState(false);const[pLat,sPLat]=useState(0);const[pLng,sPLng]=useState(0);const[dLat,sDLat]=useState(0);const[dLng,sDLng]=useState(0);const[lLat,sLLat]=useState(0);const[lLng,sLLng]=useState(0);
-  const set=(k:string)=>(e:any)=>sF({...f,[k]:e.target.value});
-  const setItem=(i:number,k:string,v:string)=>setItems(items.map((it,idx)=>idx===i?{...it,[k]:v}:it));
-  const addItem=()=>setItems([...items,{name:"",cost:""}]);
-  const removeItem=(i:number)=>setItems(items.filter((_,idx)=>idx!==i));
-  const tt=TASK_TYPES.find(x=>x.id===taskType)||TASK_TYPES[0];
-  const itemCostTotal=(tt.needsItems&&!isMoving)?items.reduce((s,it)=>s+(parseFloat(it.cost)||0),0):0;
+  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);
+  const[preset,setPreset]=useState<string|null>(null);
+  const[title,setTitle]=useState("");
+  const[steps,setSteps]=useState<WStep[]>([]);
+  const[fee,setFee]=useState("");
+  const[maxRunners,setMaxRunners]=useState("1");
+  const[privacyZone,setPrivacyZone]=useState("100");
+  const[details,setDetails]=useState("");
+  const[ok,setOk]=useState(false);
+
   const nRunners=Math.max(1,parseInt(maxRunners)||1);
-  const feePerRunner=parseFloat(f.suggestedFee)||0;
-  const total=(isMoving||nRunners>1)?feePerRunner*nRunners:itemCostTotal+feePerRunner;
-  const onPickup=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,pickupAddr:addr}));sPLat(lat);sPLng(lng)};
-  const onDropoff=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,dropoffAddr:addr}));sDLat(lat);sDLng(lng)};
-  const onLocation=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,locationAddr:addr}));sLLat(lat);sLLng(lng)};
+  const feePerRunner=parseFloat(fee)||0;
+  const total=feePerRunner*nRunners;
+  const wp=WORKFLOW_PRESETS.find(p=>p.id===preset);
+
+  const pickPreset=(id:string)=>{
+    const p=WORKFLOW_PRESETS.find(x=>x.id===id);if(!p)return;
+    setPreset(id);setSteps(p.steps.map(s=>({...s})));setMaxRunners(String(p.runners));
+  };
+
+  const updateStep=(i:number,k:string,v:any)=>setSteps(steps.map((s,idx)=>idx===i?{...s,[k]:v}:s));
+  const addStep=()=>setSteps([...steps,emptyStep()]);
+  const removeStep=(i:number)=>setSteps(steps.filter((_,idx)=>idx!==i));
+  const moveStep=(i:number,dir:number)=>{const j=i+dir;if(j<0||j>=steps.length)return;const ns=[...steps];[ns[i],ns[j]]=[ns[j],ns[i]];setSteps(ns)};
+
   const submit=async()=>{
-    if(!f.title||!userId)return;
-    if(taskType==="delivery"&&(!f.pickupAddr||!f.dropoffAddr))return;
-    if(taskType!=="delivery"&&!f.locationAddr)return;
-    if(taskType==="delivery"&&!isMoving){const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);if(validItems.length===0)return;}
+    if(!title||!userId||steps.length===0)return;
     if(!walletAddr){await connect();return;}
+    const filledSteps=steps.filter(s=>s.action.trim());
+    if(filledSteps.length===0)return;
+    // Derive locations from steps
+    const firstLoc=filledSteps.find(s=>s.locationAddr);
+    const lastLoc=[...filledSteps].reverse().find(s=>s.locationAddr);
+    const isDel=wp?.taskType==="delivery"&&filledSteps.filter(s=>s.locationAddr).length>=2;
     try{
-      const body:any={title:f.title,category:f.category,details:f.details||f.action||"No instructions.",taskType,privacyZone:parseInt(f.privacyZone)||100,suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId};
-      if(taskType==="delivery"){
-        const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);
-        Object.assign(body,{pickupAddr:f.pickupAddr,pickupLat:pLat||50.85,pickupLng:pLng||4.35,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85,dropoffLng:dLng||4.35,itemCost:isMoving?0:itemCostTotal,items:isMoving?[]:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)}))});
-        if(isMoving){body.movingDetails={apartmentSize:moving.apartmentSize,floorFrom:parseInt(moving.floorFrom)||0,floorTo:parseInt(moving.floorTo)||0,elevatorFrom:moving.elevatorFrom,elevatorTo:moving.elevatorTo,vehicleType:moving.vehicleType,inventoryList:moving.inventoryList||undefined,moveDate:moving.moveDate||undefined};body.maxRunners=nRunners;}
-      }else{
-        Object.assign(body,{locationAddr:f.locationAddr,locationLat:lLat||50.85,locationLng:lLng||4.35,action:f.action,proofType:f.proofType,targetPerson:f.targetPerson||undefined});
+      const body:any={
+        title,category:wp?.cat||"custom",details:details||filledSteps.map((s,i)=>`${i+1}. ${s.action}`).join(" → "),
+        taskType:wp?.taskType||"gather-info",privacyZone:parseInt(privacyZone)||100,
+        suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId,
+        steps:filledSteps.map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined,status:"pending"})),
+      };
+      if(isDel&&firstLoc&&lastLoc){
+        body.pickupAddr=firstLoc.locationAddr;body.pickupLat=firstLoc.locationLat||50.85;body.pickupLng=firstLoc.locationLng||4.35;
+        body.dropoffAddr=lastLoc.locationAddr;body.dropoffLat=lastLoc.locationLat||50.85;body.dropoffLng=lastLoc.locationLng||4.35;
+        body.itemCost=0;
+      }else if(firstLoc){
+        body.locationAddr=firstLoc.locationAddr;body.locationLat=firstLoc.locationLat||50.85;body.locationLng=firstLoc.locationLng||4.35;
+        body.action=filledSteps.map(s=>s.action).join(" → ");body.proofType=filledSteps.find(s=>s.proofType!=="none")?.proofType||"photo";
       }
       const res=await payFetch(`${SERVER_URL}/task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if(!res.ok){const e=await res.json();throw new Error(e.error);}
       setOk(true);setTimeout(()=>setOk(false),3500);
-      sF({title:"",pickupAddr:"",dropoffAddr:"",locationAddr:"",suggestedFee:"",details:"",action:"",category:taskType==="delivery"?"delivery":f.category,privacyZone:"100",proofType:"photo",targetPerson:""});
-      setItems([{name:"",cost:""}]);setMaxRunners("1");sPLat(0);sPLng(0);sDLat(0);sDLng(0);sLLat(0);sLLng(0);
+      setPreset(null);setTitle("");setSteps([]);setFee("");setMaxRunners("1");setDetails("");
     }catch(e:any){alert(e.message);}
   };
-  const typeBtnS=(active:boolean):any=>({padding:"8px 14px",borderRadius:10,border:active?"1px solid #00ff87":"1px solid rgba(255,255,255,0.06)",background:active?"rgba(0,255,135,0.08)":"rgba(255,255,255,0.015)",color:active?"#00ff87":"#888",fontSize:12,fontWeight:active?700:500,fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"});
+
+  const presetBtnS=(active:boolean):any=>({padding:"10px 14px",borderRadius:12,border:active?"1px solid #00ff87":"1px solid rgba(255,255,255,0.06)",background:active?"rgba(0,255,135,0.06)":"rgba(255,255,255,0.015)",color:active?"#00ff87":"#999",fontSize:12,fontWeight:active?700:500,fontFamily:"'Outfit',sans-serif",textAlign:"left" as const,whiteSpace:"nowrap"});
+  const stepS:any={padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.04)",marginBottom:8,position:"relative"};
+  const stepNumS=(i:number):any=>({width:24,height:24,borderRadius:"50%",background:i===0?"rgba(0,255,135,0.12)":i===steps.length-1?"rgba(255,71,87,0.12)":"rgba(255,208,0,0.12)",color:i===0?"#00ff87":i===steps.length-1?"#ff4757":"#ffd000",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0});
+
   return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("post_title")}</h2>
+    <p style={{fontSize:12,color:"#555",marginTop:2}}>Build a workflow: choose a preset, customize the steps</p>
     {ok&&<div style={S.successBanner}>✓ {t("posted_ok",total.toFixed(2))}</div>}
     {!walletAddr&&<div style={{padding:14,borderRadius:12,background:"rgba(0,82,255,0.04)",border:"1px solid rgba(0,82,255,0.12)",marginTop:12,textAlign:"center"}}><span style={{color:"#0052ff",fontSize:13}}>{t("connect_to_use")}</span></div>}
-    <div style={{display:"flex",gap:6,marginTop:14,marginBottom:4,overflowX:"auto",paddingBottom:4}}>
-      {TASK_TYPES.map(tp=><button key={tp.id} onClick={()=>{setTaskType(tp.id);sF(p=>({...p,category:tp.id==="delivery"?"delivery":tp.id}))}} style={typeBtnS(taskType===tp.id)}>{tp.i} {tp.l}</button>)}
+
+    {/* Workflow presets */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:14}}>
+      {WORKFLOW_PRESETS.map(p=><button key={p.id} onClick={()=>pickPreset(p.id)} style={presetBtnS(preset===p.id)}>{p.l}</button>)}
     </div>
-    <div className="dz-form-grid">
-      <div><label style={S.fLbl}>{t("what")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={taskType==="delivery"?t("what_ph"):"Task title..."} value={f.title} onChange={set("title")}/></div>
-      {taskType!=="delivery"&&<div><label style={S.fLbl}>Category</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="errand">🏃 Errand</option><option value="social">👋 Social</option><option value="info">🔍 Info</option><option value="verification">✅ Verify</option><option value="custom">⚙️ Custom</option></select></div>}
-      {taskType==="delivery"&&<div><label style={S.fLbl}>{t("category")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="delivery">📦 Delivery</option><option value="food">🍔 {t("food")}</option><option value="grocery">🛒 {t("grocery")}</option><option value="moving">🚚 {t("moving")}</option><option value="errand">📦 {t("errand")}</option></select></div>}
-      {taskType==="delivery"&&<>
-        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{isMoving?"🏠 Moving from":"📍 "+t("pickup")}</label><AddressMapPicker label={isMoving?"Current address":t("pickup_ph")} value={f.pickupAddr} lat={pLat} lng={pLng} onSelect={onPickup} userLoc={userLoc}/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{isMoving?"🏠 Moving to":"📍 "+t("dropoff")}</label><AddressMapPicker label={isMoving?"New address":t("dropoff_ph")} value={f.dropoffAddr} lat={dLat} lng={dLng} onSelect={onDropoff} userLoc={userLoc}/></div>
-        {isMoving&&<>
-          <div><label style={S.fLbl}>🏠 Apartment size</label><select style={{...S.fInp,fontSize:14,padding:12}} value={moving.apartmentSize} onChange={setMov("apartmentSize")}><option value="studio">Studio</option><option value="1br">1 Bedroom</option><option value="2br">2 Bedrooms</option><option value="3br">3 Bedrooms</option><option value="4br+">4+ Bedrooms</option><option value="office">Office</option><option value="storage">Storage unit</option></select></div>
-          <div><label style={S.fLbl}>🚚 Vehicle needed</label><select style={{...S.fInp,fontSize:14,padding:12}} value={moving.vehicleType} onChange={setMov("vehicleType")}><option value="van">Van</option><option value="truck">Truck</option><option value="any">Any vehicle</option></select></div>
-          <div><label style={S.fLbl}>⬆️ Floor (from)</label><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="number" min="0" max="50" style={{...S.fInp,fontSize:14,padding:12,flex:1}} placeholder="0" value={moving.floorFrom} onChange={setMov("floorFrom")}/><label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#888",whiteSpace:"nowrap"}}><input type="checkbox" checked={moving.elevatorFrom} onChange={e=>setMoving(p=>({...p,elevatorFrom:e.target.checked}))}/>Elevator</label></div></div>
-          <div><label style={S.fLbl}>⬇️ Floor (to)</label><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="number" min="0" max="50" style={{...S.fInp,fontSize:14,padding:12,flex:1}} placeholder="0" value={moving.floorTo} onChange={setMov("floorTo")}/><label style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:"#888",whiteSpace:"nowrap"}}><input type="checkbox" checked={moving.elevatorTo} onChange={e=>setMoving(p=>({...p,elevatorTo:e.target.checked}))}/>Elevator</label></div></div>
-          <div><label style={S.fLbl}>📅 Move date</label><input type="date" style={{...S.fInp,fontSize:14,padding:12}} value={moving.moveDate} onChange={setMov("moveDate")}/></div>
-          <div><label style={S.fLbl}>👥 Movers needed</label><input type="number" min="1" max="20" style={{...S.fInp,fontSize:14,padding:12}} placeholder="2" value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/>{nRunners>1&&<div style={{fontSize:9,color:"#ffd000",marginTop:3}}>⚡ {nRunners} movers × ${feePerRunner.toFixed(2)} = ${total.toFixed(2)} USDC total</div>}</div>
-          <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>📋 What's being moved?</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder="e.g. 2 sofas, dining table + 4 chairs, queen bed, 15 boxes, washing machine..." value={moving.inventoryList} onChange={setMov("inventoryList")}/></div>
-        </>}
-      </>}
-      {taskType!=="delivery"&&<>
-        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>📍 Location</label><AddressMapPicker label="Where should the runner go?" value={f.locationAddr} lat={lLat} lng={lLng} onSelect={onLocation} userLoc={userLoc}/></div>
-        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>🎯 Action</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder="What should the runner do there?" value={f.action} onChange={set("action")}/></div>
-        <div><label style={S.fLbl}>📸 Proof type</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.proofType} onChange={set("proofType")}>{PROOF_TYPES.map(p=><option key={p} value={p}>{p==="photo"?"📸 Photo":p==="video"?"🎥 Video":p==="text"?"📝 Text":p==="gps"?"📍 GPS":p==="none"?"— None":p}</option>)}</select></div>
-        {(taskType==="interact"||taskType==="verification")&&<div><label style={S.fLbl}>👤 Target person</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="Who to meet or verify?" value={f.targetPerson} onChange={set("targetPerson")}/></div>}
-      </>}
-      <div><label style={S.fLbl}>{taskType==="delivery"?t("delivery_fee"):"💰 Runner fee (USDC)"}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={f.suggestedFee} onChange={set("suggestedFee")}/></div>
-      {taskType!=="delivery"&&<div><label style={S.fLbl}>👥 Runners needed</label><input type="number" min="1" max="100" style={{...S.fInp,fontSize:14,padding:12}} placeholder="1" value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/>{nRunners>1&&<div style={{fontSize:9,color:"#ffd000",marginTop:3}}>⚡ {nRunners} runners × ${feePerRunner.toFixed(2)} = ${total.toFixed(2)} USDC total</div>}</div>}
-      <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.privacyZone} onChange={set("privacyZone")}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
-      {taskType==="delivery"&&<div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("instructions")}</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder={t("instructions_ph")} value={f.details} onChange={set("details")}/></div>}
-    </div>
-    {tt.needsItems&&!isMoving&&<div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><label style={S.fLbl}>🛒 {t("items")}</label><button style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,255,135,0.15)",background:"rgba(0,255,135,0.04)",color:"#00ff87",fontFamily:"'Outfit',sans-serif"}} onClick={addItem}>{t("add_item")}</button></div>
-      {items.map((it,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-        <input style={{...S.fInp,flex:2,fontSize:13,padding:"10px 12px"}} placeholder={t("item_name")} value={it.name} onChange={e=>setItem(i,"name",e.target.value)}/>
-        <input style={{...S.fInp,flex:1,fontSize:13,padding:"10px 12px"}} placeholder={t("cost")} value={it.cost} onChange={e=>setItem(i,"cost",e.target.value)}/>
-        {items.length>1&&<button style={{width:34,height:34,borderRadius:8,border:"1px solid rgba(255,71,87,0.15)",background:"rgba(255,71,87,0.04)",color:"#ff4757",flexShrink:0,fontSize:14}} onClick={()=>removeItem(i)}>✕</button>}
-      </div>)}
-    </div>}
-    <div style={{...S.escBox,marginTop:12}}>
-      {isMoving&&<>
-        <div style={S.escR}><span>🏠 {moving.apartmentSize.toUpperCase()}</span><span>🚚 {moving.vehicleType}</span></div>
-        {(parseInt(moving.floorFrom)||0)>0&&<div style={S.escR}><span>⬆️ Floor {moving.floorFrom}{moving.elevatorFrom?" (elevator)":""}</span><span>→</span></div>}
-        {(parseInt(moving.floorTo)||0)>0&&<div style={S.escR}><span>⬇️ Floor {moving.floorTo}{moving.elevatorTo?" (elevator)":""}</span><span></span></div>}
-        {moving.moveDate&&<div style={S.escR}><span>📅 {moving.moveDate}</span><span></span></div>}
+
+    {preset&&<>
+      {/* Title */}
+      <div style={{marginTop:16}}><label style={S.fLbl}>✏️ Task title</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={preset==="moving"?"Move my apartment to new city":"Describe the task..."} value={title} onChange={e=>setTitle(e.target.value)}/></div>
+
+      {/* Workflow steps */}
+      <div style={{marginTop:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>📋 Workflow Steps</div>
+          <button style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,255,135,0.15)",background:"rgba(0,255,135,0.04)",color:"#00ff87",fontFamily:"'Outfit',sans-serif"}} onClick={addStep}>+ Add Step</button>
+        </div>
+        {steps.map((s,i)=><div key={i} style={stepS}>
+          <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+            <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,paddingTop:2}}>
+              <div style={stepNumS(i)}>{i+1}</div>
+              {i<steps.length-1&&<div style={{width:2,height:20,background:"rgba(255,255,255,0.06)"}}/>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <input style={{...S.fInp,fontSize:13,padding:"10px 12px",marginBottom:6}} placeholder="What should the runner do?" value={s.action} onChange={e=>updateStep(i,"action",e.target.value)}/>
+              <AddressMapPicker label="📍 Where? (optional)" value={s.locationAddr} lat={s.locationLat} lng={s.locationLng} onSelect={(addr:string,lat:number,lng:number)=>{updateStep(i,"locationAddr",addr);updateStep(i,"locationLat",lat);updateStep(i,"locationLng",lng)}} userLoc={userLoc}/>
+              <div style={{display:"flex",gap:6,marginTop:6}}>
+                <div style={{flex:1}}><label style={{fontSize:9,color:"#555",textTransform:"uppercase" as const,letterSpacing:1}}>Proof</label><select style={{...S.fInp,fontSize:12,padding:"8px 10px"}} value={s.proofType} onChange={e=>updateStep(i,"proofType",e.target.value)}>{PROOF_TYPES.map(p=><option key={p} value={p}>{p==="photo"?"📸 Photo":p==="video"?"🎥 Video":p==="text"?"📝 Text":p==="gps"?"📍 GPS":"— None"}</option>)}</select></div>
+                <div style={{flex:1}}><label style={{fontSize:9,color:"#555",textTransform:"uppercase" as const,letterSpacing:1}}>Requires</label><input style={{...S.fInp,fontSize:12,padding:"8px 10px"}} placeholder="van, camera, ID..." value={s.requirements} onChange={e=>updateStep(i,"requirements",e.target.value)}/></div>
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column" as const,gap:3,flexShrink:0}}>
+              <button style={{width:26,height:26,borderRadius:6,border:"1px solid rgba(255,255,255,0.06)",background:"rgba(255,255,255,0.02)",color:"#666",fontSize:12}} onClick={()=>moveStep(i,-1)}>↑</button>
+              <button style={{width:26,height:26,borderRadius:6,border:"1px solid rgba(255,255,255,0.06)",background:"rgba(255,255,255,0.02)",color:"#666",fontSize:12}} onClick={()=>moveStep(i,1)}>↓</button>
+              {steps.length>1&&<button style={{width:26,height:26,borderRadius:6,border:"1px solid rgba(255,71,87,0.15)",background:"rgba(255,71,87,0.04)",color:"#ff4757",fontSize:12}} onClick={()=>removeStep(i)}>✕</button>}
+            </div>
+          </div>
+        </div>)}
+      </div>
+
+      {/* Details / notes */}
+      <div style={{marginTop:4}}><label style={S.fLbl}>📝 Additional notes</label><textarea style={{...S.fInp,minHeight:50,fontSize:13,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder="Any extra instructions for the runner..." value={details} onChange={e=>setDetails(e.target.value)}/></div>
+
+      {/* Fee + runners + privacy */}
+      <div className="dz-form-grid" style={{marginTop:10}}>
+        <div><label style={S.fLbl}>💰 Fee per runner (USDC)</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={fee} onChange={e=>setFee(e.target.value)}/></div>
+        <div><label style={S.fLbl}>👥 Runners needed</label><input type="number" min="1" max="100" style={{...S.fInp,fontSize:14,padding:12}} value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/></div>
+        <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={privacyZone} onChange={e=>setPrivacyZone(e.target.value)}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
+      </div>
+
+      {/* Escrow summary — shows workflow + pricing */}
+      <div style={{...S.escBox,marginTop:12}}>
+        <div style={{fontSize:9,color:"#444",fontFamily:"monospace",letterSpacing:1,marginBottom:8}}>📋 WORKFLOW → ESCROW</div>
+        {steps.filter(s=>s.action.trim()).map((s,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
+          <div style={{...stepNumS(i),width:18,height:18,fontSize:9}}>{i+1}</div>
+          <span style={{fontSize:11,color:"#999",flex:1}}>{s.action}{s.requirements?<span style={{color:"#ffd000",marginLeft:4,fontSize:9}}>⚡ {s.requirements}</span>:null}{s.proofType&&s.proofType!=="none"?<span style={{color:"#a855f7",marginLeft:4,fontSize:9}}>📸 {s.proofType}</span>:null}</span>
+          {s.locationAddr&&<span style={{fontSize:9,color:"#00b4ff",maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📍</span>}
+        </div>)}
+        <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"8px 0"}}/>
+        <div style={S.escR}><span>🏃 {nRunners} runner{nRunners>1?"s":""} × {steps.filter(s=>s.action.trim()).length} steps</span><span>{feePerRunner||0} × {nRunners}</span></div>
         <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/>
-      </>}
-      {tt.needsItems&&!isMoving&&items.filter(it=>it.name&&parseFloat(it.cost)>0).map((it,i)=><div key={i} style={S.escR}><span>{it.name}</span><span>{parseFloat(it.cost).toFixed(1)}</span></div>)}
-      <div style={S.escR}><span>{isMoving?`🚚 ${nRunners} mover${nRunners>1?"s":""}`:taskType==="delivery"?"🚴 "+t("delivery_lbl"):"🏃 Runner fee"}{!isMoving&&nRunners>1?` × ${nRunners}`:""}</span><span>{(isMoving||nRunners>1)?`${feePerRunner||0} × ${nRunners}`:(f.suggestedFee||"0")}</span></div>
-      <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>🔒 {t("total")}</span><span style={{fontWeight:700,color:"#00ff87"}}>${total.toFixed(2)} USDC</span></div>
-    </div>
-    {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}
-    {walletAddr&&<button style={{...S.postBtn,padding:16,fontSize:15,marginTop:16}} onClick={submit}>🔒 {t("post_btn")} · {total>0?"$"+total.toFixed(2)+" USDC":""}</button>}
+        <div style={S.escR}><span style={{fontWeight:700}}>🔒 {t("total")}</span><span style={{fontWeight:700,color:"#00ff87"}}>${total.toFixed(2)} USDC</span></div>
+      </div>
+
+      {/* Submit */}
+      {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}
+      {walletAddr&&<button style={{...S.postBtn,padding:16,fontSize:15,marginTop:16}} onClick={submit}>🔒 {t("post_btn")} · {total>0?"$"+total.toFixed(2)+" USDC":""}</button>}
+    </>}
   </div>;
 }
 

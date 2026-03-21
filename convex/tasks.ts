@@ -31,6 +31,18 @@ export const create = mutation({
     action: v.optional(v.string()),
     proofType: v.optional(v.string()),
     targetPerson: v.optional(v.string()),
+    // Workflow steps
+    steps: v.optional(v.array(v.object({
+      order: v.number(),
+      action: v.string(),
+      locationAddr: v.optional(v.string()),
+      locationLat: v.optional(v.float64()),
+      locationLng: v.optional(v.float64()),
+      proofType: v.optional(v.string()),
+      proofData: v.optional(v.string()),
+      requirements: v.optional(v.string()),
+      status: v.optional(v.string()),
+    }))),
     // Moving-specific
     movingDetails: v.optional(v.object({
       apartmentSize: v.string(),
@@ -80,13 +92,18 @@ export const create = mutation({
       doc.locationAddr = args.pickupAddr; doc.locationLat = args.pickupLat; doc.locationLng = args.pickupLng;
       // Moving details
       if (args.movingDetails) doc.movingDetails = args.movingDetails;
+      // Workflow steps
+      if (args.steps) doc.steps = args.steps;
     } else {
-      // Generic tasks need a location
-      if (!args.locationAddr) throw new Error("Task needs a location");
-      doc.locationAddr = args.locationAddr; doc.locationLat = args.locationLat; doc.locationLng = args.locationLng;
+      // Generic tasks need a location (unless steps provide locations)
+      if (!args.locationAddr && (!args.steps || args.steps.length === 0)) throw new Error("Task needs a location");
+      if (args.locationAddr) {
+        doc.locationAddr = args.locationAddr; doc.locationLat = args.locationLat; doc.locationLng = args.locationLng;
+      }
       doc.action = args.action || args.details;
       doc.proofType = args.proofType || "photo";
       doc.targetPerson = args.targetPerson;
+      if (args.steps) doc.steps = args.steps;
     }
 
     return await ctx.db.insert("tasks", doc);
