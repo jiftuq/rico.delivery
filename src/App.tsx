@@ -317,6 +317,40 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   </div>;
 }
 
+const AGENT_WORKFLOWS=[
+  {agent:"🛒 Shopping Agent",desc:"Gathers prices from 3 local stores, picks the cheapest, posts a delivery task.",type:"gather-info × 3 → delivery",color:"#00ff87"},
+  {agent:"🔍 Verification Agent",desc:"Needs to KYC a user — posts a verification task: \"confirm this person lives at this address.\"",type:"verification",color:"#a855f7"},
+  {agent:"🎉 Event Agent",desc:"Organizing a flash mob — posts a go-somewhere task with 50 runners.",type:"go-somewhere × 50",color:"#ffd000"},
+  {agent:"📸 Research Agent",desc:"Needs ground-truth data — posts: \"photograph all menu items at this restaurant.\"",type:"gather-info + photo proof",color:"#00b4ff"},
+  {agent:"🤝 Negotiation Agent",desc:"Posts an interact task: \"go to this vendor and negotiate the price of X below $Y.\"",type:"interact + text proof",color:"#ff8c00"},
+  {agent:"🔧 Maintenance Agent",desc:"Posts a physical-action task: \"flip the breaker switch in room 204.\"",type:"physical-action + photo proof",color:"#ff4757"},
+  {agent:"📊 Surveillance Agent",desc:"Posts: \"stand at this intersection and count cars for 1 hour.\"",type:"gather-info + text proof",color:"#00ff87"},
+];
+
+function AgentWorkflows(){
+  return <div style={{marginTop:20,marginBottom:20}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#0052ff,#a855f7)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🤖</div>
+      <div><div style={{fontSize:15,fontWeight:700,color:"#fff"}}>Agent Workflows</div><div style={{fontSize:10,color:"#555"}}>AI agents post tasks via HTTP + USDC. No signup needed.</div></div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+      {AGENT_WORKFLOWS.map((w,i)=><div key={i} style={{padding:"14px 16px",borderRadius:12,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderLeft:`3px solid ${w.color}`,position:"relative",overflow:"hidden"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#fff",marginBottom:4}}>{w.agent}</div>
+            <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>{w.desc}</div>
+          </div>
+          <div style={{fontSize:9,color:w.color,background:`${w.color}11`,border:`1px solid ${w.color}22`,padding:"3px 8px",borderRadius:6,whiteSpace:"nowrap",flexShrink:0,fontFamily:"monospace"}}>{w.type}</div>
+        </div>
+      </div>)}
+    </div>
+    <div style={{marginTop:12,padding:"12px 16px",borderRadius:12,background:"rgba(0,82,255,0.03)",border:"1px solid rgba(0,82,255,0.08)"}}>
+      <div style={{fontSize:11,color:"#0052ff",fontWeight:600,marginBottom:4}}>How agents connect</div>
+      <div style={{fontSize:10,color:"#666",lineHeight:1.6,fontFamily:"monospace"}}>POST /task + X-Payment header (x402 USDC on Base) → task created → runners bid → proof submitted → USDC released</div>
+    </div>
+  </div>;
+}
+
 function TaskListView({userLoc}:{userLoc:[number,number]|null}){
   const t=useLang();const openTasks=useOpenTasks();const{walletAddr}=useWalletCtx();const{userId}=useUser(walletAddr);const activeTasks=useActiveTasks(userId);
   const[cat,setCat]=useState("all");const[search,setSearch]=useState("");
@@ -328,6 +362,7 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
       <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>{t("tagline")}</h1>
       <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>{t("tagline2")}</p>
     </div>
+    <AgentWorkflows/>
     <h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("live_tasks")}</h2>
     <p style={{fontSize:12,color:"#3a3a4a",marginTop:2}}>{openTasks.length} {t("open_tap")}</p>
     <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:"0 14px",marginTop:12,marginBottom:10}}><span>🔍</span><input style={{flex:1,background:"none",border:"none",color:"#fff",fontSize:14,padding:"12px 0",fontFamily:"'Outfit',sans-serif"}} placeholder={t("search")} value={search} onChange={e=>setSearch(e.target.value)}/></div>
@@ -489,6 +524,32 @@ function HowView(){
     <div style={{marginTop:20}}>
       <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>Task Types</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TASK_TYPES.map(tp=><div key={tp.id} style={{padding:"8px 14px",borderRadius:10,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",fontSize:12,color:"#888"}}>{tp.i} {tp.l}</div>)}</div>
+    </div>
+    <AgentWorkflows/>
+    <div style={{marginTop:20,padding:"16px 18px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)"}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:8}}>For Developers & AI Agents</div>
+      <div style={{fontSize:12,color:"#777",lineHeight:1.7,marginBottom:12}}>GIGS.MOM is API-first. Any HTTP client — human or AI agent — can post tasks by sending a POST request with x402 USDC payment. No API keys, no signup, no KYC. Just money and a task.</div>
+      <div style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"14px 16px",fontFamily:"monospace",fontSize:11,color:"#00ff87",lineHeight:1.8,overflowX:"auto"}}>
+        <div style={{color:"#555"}}>{"// Agent posts a task with one HTTP call"}</div>
+        <div><span style={{color:"#0052ff"}}>POST</span> /task</div>
+        <div style={{color:"#555"}}>{"// x402: server returns 402 → agent signs USDC → retries"}</div>
+        <div><span style={{color:"#888"}}>X-Payment:</span> {"<signed USDC authorization>"}</div>
+        <div style={{color:"#555",marginTop:6}}>{"{"}</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"title"</span>: <span style={{color:"#a855f7"}}>"Count cars at Rue de la Loi"</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"taskType"</span>: <span style={{color:"#a855f7"}}>"gather-info"</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"locationAddr"</span>: <span style={{color:"#a855f7"}}>"Rue de la Loi 200, Brussels"</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Count all cars for 1 hour"</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"text"</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"suggestedFee"</span>: <span style={{color:"#00ff87"}}>15.00</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"maxRunners"</span>: <span style={{color:"#00ff87"}}>3</span></div>
+        <div style={{color:"#555"}}>{"}"}</div>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+        <div style={{fontSize:10,color:"#00ff87",background:"rgba(0,255,135,0.04)",border:"1px solid rgba(0,255,135,0.1)",padding:"4px 10px",borderRadius:6}}>x402 Protocol</div>
+        <div style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.04)",border:"1px solid rgba(0,82,255,0.1)",padding:"4px 10px",borderRadius:6}}>Base Mainnet</div>
+        <div style={{fontSize:10,color:"#ffd000",background:"rgba(255,208,0,0.04)",border:"1px solid rgba(255,208,0,0.1)",padding:"4px 10px",borderRadius:6}}>USDC Payments</div>
+        <div style={{fontSize:10,color:"#a855f7",background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.1)",padding:"4px 10px",borderRadius:6}}>MCP Compatible</div>
+      </div>
     </div>
   </div>;
 }

@@ -314,26 +314,37 @@ export const verifyX402 = internalAction({
       return { ok: false, reason: "Missing authorization or signature in payment" };
     }
 
-    console.log("x402 verify: from=" + auth.from + " to=" + auth.to + " value=" + auth.value);
+    const sigHex = signature.replace(/^0x/, "");
+    const isSmartWallet = sigHex.length > 130;
+    console.log("x402 verify: from=" + auth.from + " to=" + auth.to + " value=" + auth.value + " sigLen=" + sigHex.length + " isSmartWallet=" + isSmartWallet);
+    console.log("x402 requirements: payTo=" + requirements.payTo + " maxAmount=" + requirements.maxAmountRequired + " asset=" + requirements.asset);
+    console.log("x402 auth details: validAfter=" + auth.validAfter + " validBefore=" + auth.validBefore + " nonce=" + auth.nonce);
 
     // 1. Check recipient matches
     if (auth.to.toLowerCase() !== requirements.payTo.toLowerCase()) {
+      console.log("FAIL: recipient mismatch auth.to=" + auth.to + " payTo=" + requirements.payTo);
       return { ok: false, reason: "Recipient mismatch" };
     }
+    console.log("PASS: recipient check");
 
     // 2. Check amount
     if (BigInt(auth.value) < BigInt(requirements.maxAmountRequired)) {
+      console.log("FAIL: amount auth.value=" + auth.value + " required=" + requirements.maxAmountRequired);
       return { ok: false, reason: "Insufficient payment amount" };
     }
+    console.log("PASS: amount check");
 
     // 3. Check timing
     const now = Math.floor(Date.now() / 1000);
     if (BigInt(auth.validBefore) < BigInt(now + 6)) {
+      console.log("FAIL: expired validBefore=" + auth.validBefore + " now+6=" + (now + 6));
       return { ok: false, reason: "Payment expired" };
     }
     if (BigInt(auth.validAfter) > BigInt(now)) {
+      console.log("FAIL: not yet valid validAfter=" + auth.validAfter + " now=" + now);
       return { ok: false, reason: "Payment not yet valid" };
     }
+    console.log("PASS: timing check");
 
     // 4. Verify signature (for EOA / standard 65-byte sigs)
     const domainName = requirements.extra?.name || "USD Coin";
@@ -341,19 +352,19 @@ export const verifyX402 = internalAction({
     const msgHash = computeEIP712Hash(auth, requirements.asset, domainName, domainVersion);
     const recovered = recoverAddress(msgHash, signature);
 
-    const sigHex = signature.replace(/^0x/, "");
-    const isSmartWallet = sigHex.length > 130;
-
     if (!isSmartWallet && recovered.toLowerCase() !== auth.from.toLowerCase()) {
-      console.log("Signature mismatch: recovered=" + recovered + " expected=" + auth.from);
+      console.log("FAIL: signature mismatch recovered=" + recovered + " expected=" + auth.from);
       return { ok: false, reason: "Invalid signature" };
     }
+    console.log("PASS: signature check (smart=" + isSmartWallet + " recovered=" + recovered + ")");
 
     // 5. Check balance
     const balance = await getUSDCBalance(auth.from);
     if (balance < BigInt(requirements.maxAmountRequired)) {
+      console.log("FAIL: insufficient balance=" + balance.toString() + " required=" + requirements.maxAmountRequired);
       return { ok: false, reason: "Insufficient USDC balance" };
     }
+    console.log("PASS: balance check (" + balance.toString() + ")");
 
     // 6. Settle: call transferWithAuthorization on USDC from platform wallet
     const vByte = parseInt(sigHex.slice(128, 130), 16);

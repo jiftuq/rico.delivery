@@ -1,0 +1,17 @@
+{
+  "name": "gigsmom-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for GIGS.MOM — lets AI agents post tasks, check status, and manage bids",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "gigsmom-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "viem": "^2.27.2"
+  }
+}
