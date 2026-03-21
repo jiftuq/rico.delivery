@@ -205,7 +205,8 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const[routeKm,setRouteKm]=useState<string|null>(null);const[proofText,setProofText]=useState("");const[uploading,setUploading]=useState(false);
   const profile=useProfile(profileId);const st=STS[task.status]||STS.open;
   const proofFiles=useProofFiles(task._id);const{upload:uploadProof}=useProofUpload();
-  const fileRef=useRef<HTMLInputElement>(null);
+  const fileBackRef=useRef<HTMLInputElement>(null);
+  const fileFrontRef=useRef<HTMLInputElement>(null);
   const isDel=!task.taskType||task.taskType==="delivery";
   const maxR=task.maxRunners||1;const multi=maxR>1;
   const taskRunners=useTaskRunners(multi?task._id:null);
@@ -224,7 +225,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doCancel=async()=>{if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doSubmitProof=()=>{if(!isCourier||!userId)return;actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
-  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;setUploading(true);try{await uploadProof(file,task._id,userId)}catch(err:any){alert(err.message)}finally{setUploading(false);if(fileRef.current)fileRef.current.value=""}};
+  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;setUploading(true);try{await uploadProof(file,task._id,userId)}catch(err:any){alert(err.message)}finally{setUploading(false);if(fileBackRef.current)fileBackRef.current.value="";if(fileFrontRef.current)fileFrontRef.current.value=""}};
 
   return <div style={{...S.card,borderLeft:`3px solid ${st.c}`}} onClick={()=>setOpen(!open)}>
     <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
@@ -317,8 +318,10 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>
           :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
-            <input ref={fileRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={doUploadFile}/>
-            <button style={{...S.bidAccBtn,minHeight:40,fontSize:11}} onClick={()=>fileRef.current?.click()}>{uploading?"⏳":"📷"}</button>
+            <input ref={fileBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
+            <input ref={fileFrontRef} type="file" accept="image/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
+            <button style={{...S.bidAccBtn,minHeight:40,fontSize:11}} onClick={()=>fileBackRef.current?.click()} title="Back camera">{uploading?"⏳":"📷"}</button>
+            <button style={{...S.bidAccBtn,minHeight:40,fontSize:11}} onClick={()=>fileFrontRef.current?.click()} title="Selfie camera">{uploading?"⏳":"🤳"}</button>
             <button style={{...S.bidAccBtn,minHeight:40}} onClick={doSubmitProof}>✅ {t("submit_proof")}</button>
           </div>)}
         </div>}
@@ -331,7 +334,9 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
             {tr.proofData&&<span style={{fontSize:9,color:"#a855f7"}}>📸</span>}
             {/* Runner can submit proof */}
             {userId===tr.runnerId&&tr.status==="accepted"&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-              {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:11,padding:"6px 8px",width:100}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
+              {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:11,padding:"6px 8px",width:80}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
+              <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>fileBackRef.current?.click()} title="Back camera">📷</button>
+              <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>fileFrontRef.current?.click()} title="Selfie">🤳</button>
               <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={doSubmitProof}>✅</button>
             </div>}
             {/* Poster can confirm delivered runners */}
