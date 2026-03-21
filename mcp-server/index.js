@@ -146,7 +146,7 @@ server.tool(
   {
     title: z.string().describe("Short task title"),
     taskType: z.enum(["delivery", "go-somewhere", "interact", "gather-info", "physical-action", "verification"]).describe("Type of task"),
-    category: z.string().optional().describe("Category: delivery, food, grocery, errand, social, info, verification, custom"),
+    category: z.string().optional().describe("Category: delivery, food, grocery, moving, errand, social, info, verification, custom"),
     details: z.string().describe("Detailed instructions for the runner"),
     // Location (required for non-delivery)
     locationAddr: z.string().optional().describe("Address where the runner should go (required for non-delivery tasks)"),

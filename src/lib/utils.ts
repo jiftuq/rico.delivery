@@ -8,6 +8,7 @@ export const CATS = [
   { id: "delivery", l: "Delivery", i: "📦" },
   { id: "food", l: "Food", i: "🍔" },
   { id: "grocery", l: "Grocery", i: "🛒" },
+  { id: "moving", l: "Moving", i: "🚚" },
   { id: "errand", l: "Errands", i: "🏃" },
   { id: "go-somewhere", l: "Go", i: "📍" },
   { id: "interact", l: "Interact", i: "🤝" },

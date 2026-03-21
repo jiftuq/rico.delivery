@@ -146,6 +146,27 @@ def surveillance_agent():
     )
 
 
+# ── 8. Moving Agent ──
+# Hire movers to pick up furniture and deliver it
+
+def moving_agent():
+    return gigs.post_task(
+        title="Pick up sofa + table from seller, deliver to my apartment",
+        task_type="delivery",
+        category="moving",
+        pickup_addr="Rue du Marché aux Poulets 12, Brussels",
+        pickup_lat=50.8490,
+        pickup_lng=4.3510,
+        dropoff_addr="Avenue Louise 120, Brussels",
+        dropoff_lat=50.8300,
+        dropoff_lng=4.3580,
+        item_cost=0,  # Already paid for the furniture
+        suggested_fee=40.0,
+        max_runners=3,  # 3 movers for heavy items
+        poster_id=POSTER_ID,
+    )
+
+
 if __name__ == "__main__":
     # Check health
     print("Server health:", gigs.health())

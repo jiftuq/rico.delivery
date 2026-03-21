@@ -325,6 +325,7 @@ const AGENT_WORKFLOWS=[
   {agent:"🤝 Negotiation Agent",desc:"Posts an interact task: \"go to this vendor and negotiate the price of X below $Y.\"",type:"interact + text proof",color:"#ff8c00"},
   {agent:"🔧 Maintenance Agent",desc:"Posts a physical-action task: \"flip the breaker switch in room 204.\"",type:"physical-action + photo proof",color:"#ff4757"},
   {agent:"📊 Surveillance Agent",desc:"Posts: \"stand at this intersection and count cars for 1 hour.\"",type:"gather-info + text proof",color:"#00ff87"},
+  {agent:"🚚 Moving Agent",desc:"Posts a delivery task with multi-runner: \"pick up furniture at this address and bring it to my location.\"",type:"delivery × N runners",color:"#e17055"},
 ];
 
 function AgentWorkflows(){
