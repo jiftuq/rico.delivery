@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { Id } from "../convex/_generated/dataModel";
-import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners } from "./hooks/useDropZone";
+import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions } from "./hooks/useDropZone";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
@@ -202,8 +202,10 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const[open,setOpen]=useState(false);const[tab,setTab]=useState<"details"|"chat">("details");
   const[bidFee,setBidFee]=useState("");const[bidComment,setBidComment]=useState("");
   const[showRating,setShowRating]=useState<{name:string;runnerId?:string}|null>(null);const[profileId,setProfileId]=useState<Id<"users">|null>(null);
-  const[routeKm,setRouteKm]=useState<string|null>(null);const[proofText,setProofText]=useState("");
+  const[routeKm,setRouteKm]=useState<string|null>(null);const[proofText,setProofText]=useState("");const[uploading,setUploading]=useState(false);
   const profile=useProfile(profileId);const st=STS[task.status]||STS.open;
+  const proofFiles=useProofFiles(task._id);const{upload:uploadProof}=useProofUpload();
+  const fileRef=useRef<HTMLInputElement>(null);
   const isDel=!task.taskType||task.taskType==="delivery";
   const maxR=task.maxRunners||1;const multi=maxR>1;
   const taskRunners=useTaskRunners(multi?task._id:null);
@@ -222,6 +224,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doCancel=async()=>{if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doSubmitProof=()=>{if(!isCourier||!userId)return;actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
+  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;setUploading(true);try{await uploadProof(file,task._id,userId)}catch(err:any){alert(err.message)}finally{setUploading(false);if(fileRef.current)fileRef.current.value=""}};
 
   return <div style={{...S.card,borderLeft:`3px solid ${st.c}`}} onClick={()=>setOpen(!open)}>
     <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
@@ -312,8 +315,10 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
         </div>}
         {task.status==="in_progress"&&!multi&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>{isDel?"🚴":"🏃"} {task.courierName}</span>
           {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>
-          :<div style={{display:"flex",gap:6,alignItems:"center"}}>
-            {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:140}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
+          :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
+            <input ref={fileRef} type="file" accept="image/*,video/*" style={{display:"none"}} onChange={doUploadFile}/>
+            <button style={{...S.bidAccBtn,minHeight:40,fontSize:11}} onClick={()=>fileRef.current?.click()}>{uploading?"⏳":"📷"}</button>
             <button style={{...S.bidAccBtn,minHeight:40}} onClick={doSubmitProof}>✅ {t("submit_proof")}</button>
           </div>)}
         </div>}
@@ -337,6 +342,18 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
         {task.status==="delivered"&&isOwner&&!multi&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>setShowRating({name:task.courierName||"Runner"})}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
         {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for poster to confirm. Auto-releases in 2 hours.</div>}
         {task.proofData&&!multi&&<div style={{padding:10,borderRadius:10,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",marginTop:8,fontSize:12,color:"#a855f7"}}>📸 {t("proof_lbl")}: {task.proofData}</div>}
+        {/* Uploaded proof files */}
+        {proofFiles.length>0&&<div style={{marginTop:8}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#a855f7",marginBottom:6}}>📸 Proof Files ({proofFiles.length})</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {proofFiles.map((pf:any)=><div key={pf._id} style={{width:80,height:80,borderRadius:8,overflow:"hidden",border:"1px solid rgba(168,85,247,0.2)",position:"relative"}}>
+              {pf.fileType?.startsWith("image")?<img src={pf.url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={pf.caption||"proof"}/>
+              :pf.fileType?.startsWith("video")?<video src={pf.url} style={{width:"100%",height:"100%",objectFit:"cover"}} controls/>
+              :<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",fontSize:10,color:"#a855f7"}}>📄 {pf.fileName}</div>}
+              {pf.caption&&<div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",fontSize:8,color:"#fff",padding:"2px 4px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pf.caption}</div>}
+            </div>)}
+          </div>
+        </div>}
         {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{const reason=prompt("Describe the issue:");if(reason&&userId)actions.openDispute({taskId:task._id,userId,reason})}}>⚠️ Open Dispute</button>}
         {task.status==="disputed"&&<div style={{padding:14,borderRadius:12,background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.2)",marginTop:8}}><div style={{fontSize:13,fontWeight:700,color:"#ffa500",marginBottom:4}}>⚠️ Disputed</div><div style={{fontSize:12,color:"#999"}}>Opened by {task.disputeBy}: "{task.disputeReason}"</div><div style={{fontSize:11,color:"#666",marginTop:4}}>Funds are held until resolved. Contact support.</div></div>}
       </>}
@@ -442,6 +459,8 @@ const WORKFLOW_PRESETS=[
 
 function PostView({userLoc}:{userLoc:[number,number]|null}){
   const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);
+  const savedWorkflows=useSavedWorkflows(userId);
+  const{saveWorkflow,removeWorkflow,markUsed}=useWorkflowActions();
   const[preset,setPreset]=useState<string|null>(null);
   const[title,setTitle]=useState("");
   const[steps,setSteps]=useState<WStep[]>([]);
@@ -450,6 +469,8 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const[privacyZone,setPrivacyZone]=useState("100");
   const[details,setDetails]=useState("");
   const[ok,setOk]=useState(false);
+  const[showSaved,setShowSaved]=useState(false);
+  const[saveName,setSaveName]=useState("");
 
   const nRunners=Math.max(1,parseInt(maxRunners)||1);
   const feePerRunner=parseFloat(fee)||0;
@@ -458,7 +479,17 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
 
   const pickPreset=(id:string)=>{
     const p=WORKFLOW_PRESETS.find(x=>x.id===id);if(!p)return;
-    setPreset(id);setSteps(p.steps.map(s=>({...s})));setMaxRunners(String(p.runners));
+    setPreset(id);setSteps(p.steps.map(s=>({...s})));setMaxRunners(String(p.runners));setShowSaved(false);
+  };
+  const loadSaved=(wf:any)=>{
+    setPreset("custom");setSteps(wf.steps.map((s:any)=>({action:s.action,locationAddr:s.locationAddr||"",locationLat:s.locationLat||0,locationLng:s.locationLng||0,proofType:s.proofType||"none",requirements:s.requirements||""})));
+    setMaxRunners(String(wf.defaultRunners));setTitle(wf.name);setShowSaved(false);
+    if(wf._id)markUsed({workflowId:wf._id});
+  };
+  const doSaveWorkflow=async()=>{
+    if(!saveName.trim()||!userId||steps.length===0)return;
+    await saveWorkflow({userId,name:saveName.trim(),category:wp?.cat||"custom",taskType:wp?.taskType||"gather-info",defaultRunners:nRunners,steps:steps.filter(s=>s.action.trim()).map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined}))});
+    setSaveName("");alert("Workflow saved!");
   };
 
   const updateStep=(i:number,k:string,v:any)=>setSteps(steps.map((s,idx)=>idx===i?{...s,[k]:v}:s));
@@ -506,8 +537,19 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     {ok&&<div style={S.successBanner}>✓ {t("posted_ok",total.toFixed(2))}</div>}
     {!walletAddr&&<div style={{padding:14,borderRadius:12,background:"rgba(0,82,255,0.04)",border:"1px solid rgba(0,82,255,0.12)",marginTop:12,textAlign:"center"}}><span style={{color:"#0052ff",fontSize:13}}>{t("connect_to_use")}</span></div>}
 
+    {/* Saved workflows toggle */}
+    {userId&&savedWorkflows.length>0&&<div style={{marginTop:14}}>
+      <button onClick={()=>setShowSaved(!showSaved)} style={{...presetBtnS(showSaved),width:"100%",textAlign:"center"}}>{showSaved?"Hide":"💾"} My Workflows ({savedWorkflows.length})</button>
+      {showSaved&&<div style={{display:"grid",gridTemplateColumns:"1fr",gap:4,marginTop:6}}>
+        {savedWorkflows.map((wf:any)=><div key={wf._id} style={{display:"flex",gap:6,alignItems:"center",padding:"10px 14px",borderRadius:10,background:"rgba(0,82,255,0.03)",border:"1px solid rgba(0,82,255,0.08)"}}>
+          <button style={{flex:1,background:"none",border:"none",color:"#fff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",textAlign:"left",padding:0}} onClick={()=>loadSaved(wf)}>{wf.name} <span style={{color:"#555",fontWeight:400}}>· {wf.steps.length} steps · used {wf.usedCount}×</span></button>
+          <button style={{background:"none",border:"none",color:"#ff4757",fontSize:12,padding:4}} onClick={()=>removeWorkflow({workflowId:wf._id,userId})}>✕</button>
+        </div>)}
+      </div>}
+    </div>}
+
     {/* Workflow presets */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:14}}>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:savedWorkflows.length>0?8:14}}>
       {WORKFLOW_PRESETS.map(p=><button key={p.id} onClick={()=>pickPreset(p.id)} style={presetBtnS(preset===p.id)}>{p.l}</button>)}
     </div>
 
@@ -567,6 +609,13 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
         <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/>
         <div style={S.escR}><span style={{fontWeight:700}}>🔒 {t("total")}</span><span style={{fontWeight:700,color:"#00ff87"}}>${total.toFixed(2)} USDC</span></div>
       </div>
+
+      {/* Submit */}
+      {/* Save workflow for reuse */}
+      {userId&&steps.length>0&&<div style={{display:"flex",gap:6,marginTop:12,alignItems:"center"}}>
+        <input style={{...S.fInp,fontSize:12,padding:"10px 12px",flex:1}} placeholder="Save this workflow as..." value={saveName} onChange={e=>setSaveName(e.target.value)}/>
+        <button style={{padding:"10px 16px",borderRadius:10,border:"1px solid rgba(0,82,255,0.2)",background:"rgba(0,82,255,0.04)",color:"#0052ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"}} onClick={doSaveWorkflow}>💾 Save</button>
+      </div>}
 
       {/* Submit */}
       {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}

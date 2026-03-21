@@ -137,6 +137,42 @@ export default defineSchema({
     .index("by_runner", ["runnerId"])
     .index("by_task_runner", ["taskId", "runnerId"]),
 
+  // Proof files — photos/videos uploaded by runners
+  proofFiles: defineTable({
+    taskId: v.id("tasks"),
+    runnerId: v.id("users"),
+    stepOrder: v.optional(v.number()), // which workflow step this proof belongs to
+    storageId: v.string(), // Convex storage ID
+    fileType: v.string(), // image/jpeg, image/png, video/mp4, etc.
+    fileName: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_task_step", ["taskId", "stepOrder"])
+    .index("by_runner", ["runnerId"]),
+
+  // Saved workflow templates — reusable by users
+  savedWorkflows: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    category: v.string(),
+    taskType: v.string(),
+    defaultRunners: v.number(),
+    steps: v.array(v.object({
+      order: v.number(),
+      action: v.string(),
+      locationAddr: v.optional(v.string()),
+      locationLat: v.optional(v.float64()),
+      locationLng: v.optional(v.float64()),
+      proofType: v.optional(v.string()),
+      requirements: v.optional(v.string()),
+    })),
+    createdAt: v.number(),
+    usedCount: v.number(),
+  })
+    .index("by_user", ["userId"]),
+
   ratings: defineTable({
     taskId: v.id("tasks"),
     raterId: v.id("users"),

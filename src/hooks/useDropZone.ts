@@ -83,6 +83,56 @@ export function useTaskRunners(taskId: Id<"tasks"> | null) {
   return useQuery(api.tasks.getTaskRunners, taskId ? { taskId } : "skip") ?? [];
 }
 
+// Proof files
+export function useProofFiles(taskId: Id<"tasks"> | null) {
+  return useQuery(api.proofs.getProofFiles, taskId ? { taskId } : "skip") ?? [];
+}
+
+export function useProofUpload() {
+  const generateUrl = useMutation(api.proofs.generateUploadUrl);
+  const saveFile = useMutation(api.proofs.saveProofFile);
+
+  const upload = useCallback(async (
+    file: File,
+    taskId: Id<"tasks">,
+    runnerId: Id<"users">,
+    stepOrder?: number,
+    caption?: string,
+  ) => {
+    const uploadUrl = await generateUrl();
+    const res = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    const { storageId } = await res.json();
+    return await saveFile({
+      taskId,
+      runnerId,
+      stepOrder,
+      storageId,
+      fileType: file.type,
+      fileName: file.name,
+      caption,
+    });
+  }, [generateUrl, saveFile]);
+
+  return { upload };
+}
+
+// Saved workflows
+export function useSavedWorkflows(userId: Id<"users"> | null) {
+  return useQuery(api.workflows.list, userId ? { userId } : "skip") ?? [];
+}
+
+export function useWorkflowActions() {
+  return {
+    saveWorkflow: useMutation(api.workflows.save),
+    removeWorkflow: useMutation(api.workflows.remove),
+    markUsed: useMutation(api.workflows.markUsed),
+  };
+}
+
 export function useTaskActions() {
   return {
     createTask: useMutation(api.tasks.create),
