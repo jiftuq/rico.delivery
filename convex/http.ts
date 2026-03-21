@@ -3,7 +3,6 @@ import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
-const RECEIVING_WALLET = process.env.RECEIVING_WALLET!;
 const NETWORK = "base";
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
@@ -24,7 +23,7 @@ function json(data: unknown, status = 200, origin?: string) {
   });
 }
 
-function buildRequirements(totalUSDC: number, resource: string, description: string) {
+function buildRequirements(totalUSDC: number, resource: string, description: string, receivingWallet: string) {
   return {
     scheme: "exact",
     network: NETWORK,
@@ -32,7 +31,7 @@ function buildRequirements(totalUSDC: number, resource: string, description: str
     resource,
     description,
     mimeType: "application/json",
-    payTo: RECEIVING_WALLET,
+    payTo: receivingWallet,
     maxTimeoutSeconds: 300,
     asset: USDC_ADDRESS,
     extra: { name: "GIGS.MOM", version: "1" },
@@ -62,8 +61,9 @@ const postTask = httpAction(async (ctx, request) => {
   const suggestedFee = parseFloat(body?.suggestedFee) || 0;
   const totalUSDC = Math.max(itemCost + suggestedFee, 0.01);
 
+  const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
   const resource = new URL("/task", request.url).toString();
-  const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`);
+  const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`, receivingWallet);
 
   const paymentHeader = request.headers.get("X-Payment");
   if (!paymentHeader) return send402(requirements, origin);
@@ -109,8 +109,9 @@ const acceptBid = httpAction(async (ctx, request) => {
 
   // Courier bid higher → poster pays the difference via x402
   if (diff > 0.001) {
+    const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
     const resource = new URL("/accept-bid", request.url).toString();
-    const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`);
+    const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
     const paymentHeader = request.headers.get("X-Payment");
     if (!paymentHeader) return send402(requirements, origin);
     const result: any = await ctx.runAction(internal.payments.verifyX402, {

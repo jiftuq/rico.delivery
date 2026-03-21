@@ -29,6 +29,16 @@ function getPlatformWallet() {
   return { account, publicClient, walletClient };
 }
 
+// ── Get receiving wallet (called by http.ts which can't access process.env) ──
+export const getReceivingWallet = internalAction({
+  args: {},
+  handler: async () => {
+    const wallet = process.env.RECEIVING_WALLET;
+    if (!wallet) throw new Error("RECEIVING_WALLET not set");
+    return wallet;
+  },
+});
+
 // ── Send USDC on-chain from platform wallet ──
 export const sendUSDC = internalAction({
   args: { to: v.string(), amountUSDC: v.float64() },
