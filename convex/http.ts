@@ -59,7 +59,9 @@ const postTask = httpAction(async (ctx, request) => {
 
   const itemCost = parseFloat(body?.itemCost) || 0;
   const suggestedFee = parseFloat(body?.suggestedFee) || 0;
-  const totalUSDC = Math.max(itemCost + suggestedFee, 0.01);
+  const maxRunners = Math.max(1, parseInt(body?.maxRunners) || 1);
+  // Multi-runner: escrow = fee * maxRunners. Single: itemCost + fee
+  const totalUSDC = Math.max(maxRunners > 1 ? suggestedFee * maxRunners : itemCost + suggestedFee, 0.01);
 
   const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
   const resource = new URL("/task", request.url).toString();
@@ -100,52 +102,61 @@ const acceptBid = httpAction(async (ctx, request) => {
     return json({ error: "Query failed: " + e.message }, 400, origin);
   }
 
-  if (!task || task.status !== "open") return json({ error: "Task not open" }, 400, origin);
+  if (!task || (task.status !== "open" && task.status !== "in_progress")) return json({ error: "Task not accepting bids" }, 400, origin);
   if (!bid || bid.taskId !== taskId) return json({ error: "Invalid bid" }, 400, origin);
   if (task.posterId !== posterId) return json({ error: "Not the poster" }, 403, origin);
 
-  const newTotal = task.itemCost + bid.fee;
-  const diff = newTotal - task.totalEscrowed;
+  const multi = (task.maxRunners || 1) > 1;
 
-  // Courier bid higher → poster pays the difference via x402
-  if (diff > 0.001) {
-    const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
-    const resource = new URL("/accept-bid", request.url).toString();
-    const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
-    const paymentHeader = request.headers.get("X-Payment");
-    if (!paymentHeader) return send402(requirements, origin);
-    const result: any = await ctx.runAction(internal.payments.verifyX402, {
-      paymentBase64: paymentHeader,
-      requirements,
-    });
-    if (!result.ok) return json({ error: "Payment invalid", reason: result.reason }, 402, origin);
-  }
+  if (!multi) {
+    // Single-runner: check if extra payment needed
+    const newTotal = (task.itemCost || 0) + bid.fee;
+    const diff = newTotal - task.totalEscrowed;
 
-  // Execute the mutation
-  try {
-    await ctx.runMutation(api.tasks.acceptBid, {
-      taskId: taskId as Id<"tasks">,
-      bidId: bidId as Id<"bids">,
-      posterId: posterId as Id<"users">,
-    });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
+    if (diff > 0.001) {
+      const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+      const resource = new URL("/accept-bid", request.url).toString();
+      const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
+      const paymentHeader = request.headers.get("X-Payment");
+      if (!paymentHeader) return send402(requirements, origin);
+      const result: any = await ctx.runAction(internal.payments.verifyX402, {
+        paymentBase64: paymentHeader,
+        requirements,
+      });
+      if (!result.ok) return json({ error: "Payment invalid", reason: result.reason }, 402, origin);
+    }
 
-  // Courier bid lower → refund the overpayment to poster on-chain
-  if (diff < -0.001) {
-    const refundAmount = Math.abs(diff);
     try {
-      const poster: any = await ctx.runQuery(api.users.get, { userId: posterId as Id<"users"> });
-      if (poster?.walletAddress) {
-        const txHash = await ctx.runAction(internal.payments.sendUSDC, {
-          to: poster.walletAddress,
-          amountUSDC: refundAmount,
-        });
-        return json({ ok: true, refund: refundAmount, txHash }, 200, origin);
-      }
+      await ctx.runMutation(api.tasks.acceptBid, {
+        taskId: taskId as Id<"tasks">, bidId: bidId as Id<"bids">, posterId: posterId as Id<"users">,
+      });
     } catch (e: any) {
-      console.error("Refund failed:", e.message);
+      return json({ error: e.message }, 400, origin);
+    }
+
+    // Refund overpayment for single-runner
+    if (diff < -0.001) {
+      const refundAmount = Math.abs(diff);
+      try {
+        const poster: any = await ctx.runQuery(api.users.get, { userId: posterId as Id<"users"> });
+        if (poster?.walletAddress) {
+          const txHash = await ctx.runAction(internal.payments.sendUSDC, {
+            to: poster.walletAddress, amountUSDC: refundAmount,
+          });
+          return json({ ok: true, refund: refundAmount, txHash }, 200, origin);
+        }
+      } catch (e: any) {
+        console.error("Refund failed:", e.message);
+      }
+    }
+  } else {
+    // Multi-runner: all escrowed upfront, no extra payment needed per bid accept
+    try {
+      await ctx.runMutation(api.tasks.acceptBid, {
+        taskId: taskId as Id<"tasks">, bidId: bidId as Id<"bids">, posterId: posterId as Id<"users">,
+      });
+    } catch (e: any) {
+      return json({ error: e.message }, 400, origin);
     }
   }
 
@@ -156,7 +167,7 @@ const acceptBid = httpAction(async (ctx, request) => {
 const confirmDelivery = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const body = await request.json();
-  const { taskId, posterId, ratingScore, ratingComment } = body;
+  const { taskId, posterId, runnerId, ratingScore, ratingComment } = body;
 
   if (!taskId || !posterId) {
     return json({ error: "Missing taskId or posterId" }, 400, origin);
@@ -169,30 +180,48 @@ const confirmDelivery = httpAction(async (ctx, request) => {
     return json({ error: e.message }, 400, origin);
   }
 
-  if (!task || (task.status !== "delivered" && task.status !== "in_progress")) {
-    return json({ error: "Cannot confirm" }, 400, origin);
-  }
-  if (task.posterId !== posterId || !task.courierId) {
-    return json({ error: "Unauthorized" }, 403, origin);
+  if (!task) return json({ error: "Task not found" }, 400, origin);
+  if (task.posterId !== posterId) return json({ error: "Unauthorized" }, 403, origin);
+
+  const multi = (task.maxRunners || 1) > 1;
+  const FEE_RATE = 0.07;
+
+  // Determine who to pay
+  let payRunnerId: string;
+  let payAmount: number;
+
+  if (multi) {
+    if (!runnerId) return json({ error: "runnerId required for multi-runner task" }, 400, origin);
+    payRunnerId = runnerId;
+    // Per-runner payout: their accepted fee minus platform fee
+    // We need to look up the taskRunner entry to find their fee
+    const runners: any[] = await ctx.runQuery(api.tasks.getTaskRunners, { taskId: taskId as Id<"tasks"> });
+    const tr = runners.find((r: any) => r.runnerId === runnerId);
+    if (!tr) return json({ error: "Runner not found on task" }, 400, origin);
+    const burn = Math.round(tr.fee * FEE_RATE * 100) / 100;
+    payAmount = tr.fee - burn;
+  } else {
+    if (!task.courierId) return json({ error: "No runner assigned" }, 400, origin);
+    if (task.status !== "delivered" && task.status !== "in_progress") return json({ error: "Cannot confirm" }, 400, origin);
+    payRunnerId = task.courierId;
+    const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
+    payAmount = task.totalEscrowed - burn;
   }
 
   let courier: any;
   try {
-    courier = await ctx.runQuery(api.users.get, { userId: task.courierId as Id<"users"> });
+    courier = await ctx.runQuery(api.users.get, { userId: payRunnerId as Id<"users"> });
   } catch (e: any) {
     return json({ error: e.message }, 400, origin);
   }
-  if (!courier) return json({ error: "Courier not found" }, 400, origin);
-
-  const FEE_RATE = 0.07;
-  const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
-  const payout = task.totalEscrowed - burn;
+  if (!courier) return json({ error: "Runner not found" }, 400, origin);
 
   // 1. Update DB (status + ratings)
   try {
     await ctx.runMutation(api.tasks.confirmDelivery, {
       taskId: taskId as Id<"tasks">,
       posterId: posterId as Id<"users">,
+      runnerId: multi ? runnerId as Id<"users"> : undefined,
       ratingScore,
       ratingComment,
     });
@@ -200,19 +229,19 @@ const confirmDelivery = httpAction(async (ctx, request) => {
     return json({ error: e.message }, 400, origin);
   }
 
-  // 2. Send USDC payout to courier on-chain
+  // 2. Send USDC payout to runner on-chain
   let txHash: string | null | undefined;
   try {
     txHash = await ctx.runAction(internal.payments.sendUSDC, {
       to: courier.walletAddress,
-      amountUSDC: payout,
+      amountUSDC: payAmount,
     });
   } catch (e: any) {
     console.error(`Payout to ${courier.walletAddress} failed:`, e.message);
-    return json({ ok: true, payout, payoutFailed: true, error: e.message }, 200, origin);
+    return json({ ok: true, payout: payAmount, payoutFailed: true, error: e.message }, 200, origin);
   }
 
-  return json({ ok: true, payout, burn, txHash }, 200, origin);
+  return json({ ok: true, payout: payAmount, txHash }, 200, origin);
 });
 
 // ── POST /cancel-task ──

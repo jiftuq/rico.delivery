@@ -54,6 +54,16 @@ const en = {
   history: "History", delivery_history: "Deliveries", post_history: "Orders",
   km: "km", earned: "earned", no_history: "No history yet.",
   share: "Share", link_copied: "Copied to clipboard!",
+  // agentic commerce
+  location_lbl: "LOCATION", action_lbl: "ACTION", proof_lbl: "PROOF", runner_fee: "Runner fee",
+  runner: "Runner", submit_proof: "Submit Proof", proof_ph: "Describe or paste proof...",
+  task_type: "Task type", target_person: "Target", proof_type: "Proof type",
+  delivery: "Delivery", go_somewhere: "Go Somewhere", interact: "Interact",
+  gather_info: "Gather Info", physical_action: "Physical", verification: "Verify",
+  social: "Social", info: "Info", custom: "Custom",
+  tagline: "Humans do what agents can't.", tagline2: "Post. Bid. Prove.",
+  road_km_single: "km by road (you → location)",
+  runner_history: "Runner History", no_proof: "No proof required",
 };
 
 export type TranslationKeys = typeof en;
@@ -98,6 +108,15 @@ const de: TranslationKeys = {
   history: "Verlauf", delivery_history: "Lieferungen", post_history: "Bestellungen",
   km: "km", earned: "verdient", no_history: "Noch kein Verlauf.",
   share: "Teilen", link_copied: "In die Zwischenablage kopiert!",
+  location_lbl: "ORT", action_lbl: "AKTION", proof_lbl: "BEWEIS", runner_fee: "Runner-Gebühr",
+  runner: "Runner", submit_proof: "Beweis einreichen", proof_ph: "Beweis beschreiben...",
+  task_type: "Aufgabentyp", target_person: "Zielperson", proof_type: "Beweistyp",
+  delivery: "Lieferung", go_somewhere: "Hingehen", interact: "Interagieren",
+  gather_info: "Info sammeln", physical_action: "Physisch", verification: "Verifizieren",
+  social: "Sozial", info: "Info", custom: "Individuell",
+  tagline: "Menschen tun, was Agenten nicht können.", tagline2: "Posten. Bieten. Beweisen.",
+  road_km_single: "km Straße (Sie → Ort)",
+  runner_history: "Runner-Verlauf", no_proof: "Kein Beweis erforderlich",
 };
 
 const fr: TranslationKeys = {
@@ -140,6 +159,15 @@ const fr: TranslationKeys = {
   history: "Historique", delivery_history: "Livraisons", post_history: "Commandes",
   km: "km", earned: "gagné", no_history: "Pas encore d'historique.",
   share: "Partager", link_copied: "Copié !",
+  location_lbl: "LIEU", action_lbl: "ACTION", proof_lbl: "PREUVE", runner_fee: "Frais runner",
+  runner: "Runner", submit_proof: "Soumettre preuve", proof_ph: "Décrivez la preuve...",
+  task_type: "Type de tâche", target_person: "Personne cible", proof_type: "Type de preuve",
+  delivery: "Livraison", go_somewhere: "Aller quelque part", interact: "Interagir",
+  gather_info: "Collecter info", physical_action: "Physique", verification: "Vérifier",
+  social: "Social", info: "Info", custom: "Personnalisé",
+  tagline: "Les humains font ce que les agents ne peuvent pas.", tagline2: "Publier. Enchérir. Prouver.",
+  road_km_single: "km par route (vous → lieu)",
+  runner_history: "Historique runner", no_proof: "Pas de preuve requise",
 };
 
 const es: TranslationKeys = {
@@ -182,6 +210,15 @@ const es: TranslationKeys = {
   history: "Historial", delivery_history: "Entregas", post_history: "Pedidos",
   km: "km", earned: "ganado", no_history: "Sin historial aún.",
   share: "Compartir", link_copied: "Copiado al portapapeles!",
+  location_lbl: "UBICACIÓN", action_lbl: "ACCIÓN", proof_lbl: "PRUEBA", runner_fee: "Tarifa runner",
+  runner: "Runner", submit_proof: "Enviar prueba", proof_ph: "Describe la prueba...",
+  task_type: "Tipo de tarea", target_person: "Persona objetivo", proof_type: "Tipo de prueba",
+  delivery: "Entrega", go_somewhere: "Ir a un lugar", interact: "Interactuar",
+  gather_info: "Recopilar info", physical_action: "Físico", verification: "Verificar",
+  social: "Social", info: "Info", custom: "Personalizado",
+  tagline: "Los humanos hacen lo que los agentes no pueden.", tagline2: "Publica. Oferta. Demuestra.",
+  road_km_single: "km por carretera (tú → ubicación)",
+  runner_history: "Historial runner", no_proof: "Sin prueba requerida",
 };
 
 const it: TranslationKeys = {
@@ -224,6 +261,15 @@ const it: TranslationKeys = {
   history: "Cronologia", delivery_history: "Consegne", post_history: "Ordini",
   km: "km", earned: "guadagnato", no_history: "Nessuna cronologia.",
   share: "Condividi", link_copied: "Copiato!",
+  location_lbl: "LUOGO", action_lbl: "AZIONE", proof_lbl: "PROVA", runner_fee: "Tariffa runner",
+  runner: "Runner", submit_proof: "Invia prova", proof_ph: "Descrivi la prova...",
+  task_type: "Tipo di attività", target_person: "Persona target", proof_type: "Tipo di prova",
+  delivery: "Consegna", go_somewhere: "Vai da qualche parte", interact: "Interagire",
+  gather_info: "Raccogliere info", physical_action: "Fisico", verification: "Verificare",
+  social: "Sociale", info: "Info", custom: "Personalizzato",
+  tagline: "Gli umani fanno ciò che gli agenti non possono.", tagline2: "Pubblica. Offri. Dimostra.",
+  road_km_single: "km su strada (tu → luogo)",
+  runner_history: "Cronologia runner", no_proof: "Nessuna prova richiesta",
 };
 
 const pl: TranslationKeys = {
@@ -266,6 +312,15 @@ const pl: TranslationKeys = {
   history: "Historia", delivery_history: "Dostawy", post_history: "Zamówienia",
   km: "km", earned: "zarobiono", no_history: "Brak historii.",
   share: "Udostępnij", link_copied: "Skopiowano!",
+  location_lbl: "LOKALIZACJA", action_lbl: "AKCJA", proof_lbl: "DOWÓD", runner_fee: "Opłata runner",
+  runner: "Runner", submit_proof: "Prześlij dowód", proof_ph: "Opisz dowód...",
+  task_type: "Typ zadania", target_person: "Osoba docelowa", proof_type: "Typ dowodu",
+  delivery: "Dostawa", go_somewhere: "Idź gdzieś", interact: "Interakcja",
+  gather_info: "Zbierz info", physical_action: "Fizyczne", verification: "Weryfikacja",
+  social: "Społeczne", info: "Info", custom: "Niestandardowe",
+  tagline: "Ludzie robią to, czego agenci nie mogą.", tagline2: "Dodaj. Licytuj. Udowodnij.",
+  road_km_single: "km drogą (ty → lokalizacja)",
+  runner_history: "Historia runnera", no_proof: "Dowód nie wymagany",
 };
 
 const ro: TranslationKeys = {
@@ -308,6 +363,15 @@ const ro: TranslationKeys = {
   history: "Istoric", delivery_history: "Livrări", post_history: "Comenzi",
   km: "km", earned: "câștigat", no_history: "Niciun istoric.",
   share: "Distribuie", link_copied: "Copiat!",
+  location_lbl: "LOCAȚIE", action_lbl: "ACȚIUNE", proof_lbl: "DOVADĂ", runner_fee: "Taxă runner",
+  runner: "Runner", submit_proof: "Trimite dovadă", proof_ph: "Descrie dovada...",
+  task_type: "Tip sarcină", target_person: "Persoană țintă", proof_type: "Tip dovadă",
+  delivery: "Livrare", go_somewhere: "Mergi undeva", interact: "Interacțiune",
+  gather_info: "Colectare info", physical_action: "Fizic", verification: "Verificare",
+  social: "Social", info: "Info", custom: "Personalizat",
+  tagline: "Oamenii fac ce agenții nu pot.", tagline2: "Publică. Licitează. Dovedește.",
+  road_km_single: "km pe șosea (tu → locație)",
+  runner_history: "Istoric runner", no_proof: "Dovadă nesolicitată",
 };
 
 const nl: TranslationKeys = {
@@ -350,6 +414,15 @@ const nl: TranslationKeys = {
   history: "Geschiedenis", delivery_history: "Leveringen", post_history: "Bestellingen",
   km: "km", earned: "verdiend", no_history: "Nog geen geschiedenis.",
   share: "Delen", link_copied: "Gekopieerd!",
+  location_lbl: "LOCATIE", action_lbl: "ACTIE", proof_lbl: "BEWIJS", runner_fee: "Runner-kosten",
+  runner: "Runner", submit_proof: "Bewijs indienen", proof_ph: "Beschrijf het bewijs...",
+  task_type: "Taaktype", target_person: "Doelpersoon", proof_type: "Bewijstype",
+  delivery: "Bezorging", go_somewhere: "Ergens heen", interact: "Interactie",
+  gather_info: "Info verzamelen", physical_action: "Fysiek", verification: "Verificatie",
+  social: "Sociaal", info: "Info", custom: "Aangepast",
+  tagline: "Mensen doen wat agenten niet kunnen.", tagline2: "Plaatsen. Bieden. Bewijzen.",
+  road_km_single: "km via weg (jij → locatie)",
+  runner_history: "Runner-geschiedenis", no_proof: "Geen bewijs vereist",
 };
 
 const pt: TranslationKeys = {
@@ -392,6 +465,15 @@ const pt: TranslationKeys = {
   history: "Histórico", delivery_history: "Entregas", post_history: "Encomendas",
   km: "km", earned: "ganho", no_history: "Sem histórico.",
   share: "Partilhar", link_copied: "Copiado!",
+  location_lbl: "LOCALIZAÇÃO", action_lbl: "AÇÃO", proof_lbl: "PROVA", runner_fee: "Taxa runner",
+  runner: "Runner", submit_proof: "Enviar prova", proof_ph: "Descreva a prova...",
+  task_type: "Tipo de tarefa", target_person: "Pessoa alvo", proof_type: "Tipo de prova",
+  delivery: "Entrega", go_somewhere: "Ir a algum lugar", interact: "Interagir",
+  gather_info: "Recolher info", physical_action: "Físico", verification: "Verificar",
+  social: "Social", info: "Info", custom: "Personalizado",
+  tagline: "Humanos fazem o que agentes não podem.", tagline2: "Publicar. Licitar. Provar.",
+  road_km_single: "km por estrada (você → local)",
+  runner_history: "Histórico runner", no_proof: "Sem prova necessária",
 };
 
 const el: TranslationKeys = {
@@ -434,6 +516,15 @@ const el: TranslationKeys = {
   history: "Ιστορικό", delivery_history: "Παραδόσεις", post_history: "Παραγγελίες",
   km: "χλμ", earned: "κερδήθηκε", no_history: "Δεν υπάρχει ιστορικό.",
   share: "Κοινοποίηση", link_copied: "Αντιγράφηκε!",
+  location_lbl: "ΤΟΠΟΘΕΣΙΑ", action_lbl: "ΕΝΕΡΓΕΙΑ", proof_lbl: "ΑΠΟΔΕΙΞΗ", runner_fee: "Αμοιβή runner",
+  runner: "Runner", submit_proof: "Υποβολή απόδειξης", proof_ph: "Περιγράψτε την απόδειξη...",
+  task_type: "Τύπος εργασίας", target_person: "Πρόσωπο στόχος", proof_type: "Τύπος απόδειξης",
+  delivery: "Παράδοση", go_somewhere: "Πήγαινε κάπου", interact: "Αλληλεπίδραση",
+  gather_info: "Συλλογή πληρ.", physical_action: "Σωματικό", verification: "Επαλήθευση",
+  social: "Κοινωνικό", info: "Πληροφορίες", custom: "Προσαρμοσμένο",
+  tagline: "Οι άνθρωποι κάνουν αυτό που οι agents δεν μπορούν.", tagline2: "Δημοσίευση. Προσφορά. Απόδειξη.",
+  road_km_single: "χλμ οδικώς (εσείς → τοποθεσία)",
+  runner_history: "Ιστορικό runner", no_proof: "Δεν απαιτείται απόδειξη",
 };
 
 const hu: TranslationKeys = {
@@ -476,6 +567,15 @@ const hu: TranslationKeys = {
   history: "Előzmények", delivery_history: "Szállítások", post_history: "Rendelések",
   km: "km", earned: "keresett", no_history: "Nincs előzmény.",
   share: "Megosztás", link_copied: "Másolva!",
+  location_lbl: "HELYSZÍN", action_lbl: "TEVÉKENYSÉG", proof_lbl: "BIZONYÍTÉK", runner_fee: "Runner díj",
+  runner: "Runner", submit_proof: "Bizonyíték beküldése", proof_ph: "Írja le a bizonyítékot...",
+  task_type: "Feladat típusa", target_person: "Célszemély", proof_type: "Bizonyíték típusa",
+  delivery: "Kézbesítés", go_somewhere: "Menj valahová", interact: "Kapcsolatfelvétel",
+  gather_info: "Info gyűjtés", physical_action: "Fizikai", verification: "Ellenőrzés",
+  social: "Közösségi", info: "Információ", custom: "Egyéni",
+  tagline: "Az emberek teszik, amit az ügynökök nem tudnak.", tagline2: "Közzétesz. Ajánl. Bizonyít.",
+  road_km_single: "km úton (Ön → helyszín)",
+  runner_history: "Runner előzmények", no_proof: "Nincs bizonyíték szükséges",
 };
 
 export const T: Record<Lang, TranslationKeys> = { en, de, fr, es, it, pl, ro, nl, pt, el, hu };

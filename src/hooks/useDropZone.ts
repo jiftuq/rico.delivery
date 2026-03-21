@@ -79,6 +79,10 @@ export function useStats() {
   return useQuery(api.tasks.getStats) ?? { total: 0, open: 0, completed: 0, burned: 0 };
 }
 
+export function useTaskRunners(taskId: Id<"tasks"> | null) {
+  return useQuery(api.tasks.getTaskRunners, taskId ? { taskId } : "skip") ?? [];
+}
+
 export function useTaskActions() {
   return {
     createTask: useMutation(api.tasks.create),

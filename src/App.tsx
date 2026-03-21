@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { Id } from "../convex/_generated/dataModel";
-import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory } from "./hooks/useDropZone";
+import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners } from "./hooks/useDropZone";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
@@ -74,34 +74,61 @@ function AddressMapPicker({label,value,lat,lng,onSelect,userLoc}:{label:string;v
   </div>;
 }
 
-function TaskMap({pickup,dropoff,privacyZone,courierLat,courierLng,bids,userLoc,showExact,tracking,h=240}:{pickup:{lat:number;lng:number;addr:string};dropoff:{lat:number;lng:number;addr:string};privacyZone:number;courierLat?:number;courierLng?:number;bids?:{name:string;lat:number;lng:number;fee:number;score:number}[];userLoc:[number,number]|null;showExact:boolean;tracking:boolean;h?:number}){
+function TaskMap({pickup,dropoff,privacyZone,courierLat,courierLng,bids,userLoc,showExact,tracking,h=240,singleLocation}:{pickup:{lat:number;lng:number;addr:string};dropoff:{lat:number;lng:number;addr:string};privacyZone:number;courierLat?:number;courierLng?:number;bids?:{name:string;lat:number;lng:number;fee:number;score:number}[];userLoc:[number,number]|null;showExact:boolean;tracking:boolean;h?:number;singleLocation?:boolean}){
   const ref=useRef<HTMLDivElement>(null);const mapRef=useRef<L.Map|null>(null);
   useEffect(()=>{if(!ref.current)return;if(mapRef.current){try{mapRef.current.remove()}catch(e){}mapRef.current=null}
     const t=setTimeout(()=>{if(!ref.current)return;try{
       const m=L.map(ref.current,{zoomControl:false,attributionControl:false,tap:true}).setView([pickup.lat,pickup.lng],14);
       L.tileLayer(TILES,{maxZoom:18}).addTo(m);L.control.zoom({position:"bottomright"}).addTo(m);mapRef.current=m;
       const ico=(c:string,s=14)=>L.divIcon({className:"",html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:${c};border:3px solid #14151e;box-shadow:0 0 10px ${c}44"></div>`,iconSize:[s,s],iconAnchor:[s/2,s/2]});
-      L.marker([pickup.lat,pickup.lng],{icon:ico("#00ff87",18)}).bindPopup(`<b style="color:#111">PICKUP</b><br/><span style="color:#555;font-size:12px">${pickup.addr}</span>`).addTo(m);
-      const fz=fuzzLoc(dropoff.lat,dropoff.lng,Math.round(pickup.lat*10000));
-      L.circle([fz.lat,fz.lng],{radius:privacyZone,color:"#ff4757",fillColor:"#ff4757",fillOpacity:0.05,weight:1.5,dashArray:"6 4",opacity:0.35}).addTo(m);
-      L.marker([fz.lat,fz.lng],{icon:L.divIcon({className:"",html:`<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,71,87,0.12);border:2px dashed rgba(255,71,87,0.35);display:flex;align-items:center;justify-content:center"><div style="width:8px;height:8px;border-radius:50%;background:#ff4757"></div></div>`,iconSize:[28,28],iconAnchor:[14,14]})}).addTo(m);
-      if(showExact)L.marker([dropoff.lat,dropoff.lng],{icon:L.divIcon({className:"",html:`<div style="width:22px;height:22px;border-radius:50%;background:#ff4757;border:3px solid #14151e;box-shadow:0 0 12px rgba(255,71,87,0.5);display:flex;align-items:center;justify-content:center;font-size:11px">📍</div>`,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(m);
+      if(singleLocation){
+        // Single location mode for non-delivery tasks
+        const fz=fuzzLoc(pickup.lat,pickup.lng,Math.round(pickup.lat*10000));
+        L.circle([fz.lat,fz.lng],{radius:privacyZone,color:"#00ff87",fillColor:"#00ff87",fillOpacity:0.05,weight:1.5,dashArray:"6 4",opacity:0.35}).addTo(m);
+        L.marker([fz.lat,fz.lng],{icon:L.divIcon({className:"",html:`<div style="width:28px;height:28px;border-radius:50%;background:rgba(0,255,135,0.12);border:2px dashed rgba(0,255,135,0.35);display:flex;align-items:center;justify-content:center"><div style="width:8px;height:8px;border-radius:50%;background:#00ff87"></div></div>`,iconSize:[28,28],iconAnchor:[14,14]})}).addTo(m);
+        if(showExact)L.marker([pickup.lat,pickup.lng],{icon:ico("#00ff87",22)}).bindPopup(`<b style="color:#111">LOCATION</b><br/><span style="color:#555;font-size:12px">${pickup.addr}</span>`).addTo(m);
+      }else{
+        L.marker([pickup.lat,pickup.lng],{icon:ico("#00ff87",18)}).bindPopup(`<b style="color:#111">PICKUP</b><br/><span style="color:#555;font-size:12px">${pickup.addr}</span>`).addTo(m);
+        const fz=fuzzLoc(dropoff.lat,dropoff.lng,Math.round(pickup.lat*10000));
+        L.circle([fz.lat,fz.lng],{radius:privacyZone,color:"#ff4757",fillColor:"#ff4757",fillOpacity:0.05,weight:1.5,dashArray:"6 4",opacity:0.35}).addTo(m);
+        L.marker([fz.lat,fz.lng],{icon:L.divIcon({className:"",html:`<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,71,87,0.12);border:2px dashed rgba(255,71,87,0.35);display:flex;align-items:center;justify-content:center"><div style="width:8px;height:8px;border-radius:50%;background:#ff4757"></div></div>`,iconSize:[28,28],iconAnchor:[14,14]})}).addTo(m);
+        if(showExact)L.marker([dropoff.lat,dropoff.lng],{icon:L.divIcon({className:"",html:`<div style="width:22px;height:22px;border-radius:50%;background:#ff4757;border:3px solid #14151e;box-shadow:0 0 12px rgba(255,71,87,0.5);display:flex;align-items:center;justify-content:center;font-size:11px">📍</div>`,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(m);
+      }
       bids?.forEach(b=>{L.marker([b.lat,b.lng],{icon:L.divIcon({className:"",html:`<div style="position:relative"><div style="width:18px;height:18px;border-radius:50%;background:#ffd000;border:2px solid #14151e"></div><div style="position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:rgba(14,15,22,0.92);color:#ffd000;font-size:10px;padding:2px 8px;border-radius:4px;white-space:nowrap;font-family:monospace;font-weight:700">${b.name}</div></div>`,iconSize:[18,18],iconAnchor:[9,9]})}).addTo(m)});
-      if(courierLat&&courierLng)L.marker([courierLat,courierLng],{icon:L.divIcon({className:"",html:`<div style="width:26px;height:26px;border-radius:50%;background:#00b4ff;border:3px solid #14151e;box-shadow:0 0 16px rgba(0,180,255,0.6);display:flex;align-items:center;justify-content:center;font-size:13px">🚴</div>`,iconSize:[26,26],iconAnchor:[13,13]})}).addTo(m);
+      if(courierLat&&courierLng)L.marker([courierLat,courierLng],{icon:L.divIcon({className:"",html:`<div style="width:26px;height:26px;border-radius:50%;background:#00b4ff;border:3px solid #14151e;box-shadow:0 0 16px rgba(0,180,255,0.6);display:flex;align-items:center;justify-content:center;font-size:13px">🏃</div>`,iconSize:[26,26],iconAnchor:[13,13]})}).addTo(m);
       if(userLoc)L.marker(userLoc,{icon:ico("#a855f7",18)}).addTo(m);
-      const tgt:[number,number]=showExact?[dropoff.lat,dropoff.lng]:[fz.lat,fz.lng];
-      const rp:[number,number][]=courierLat&&courierLng?[[courierLat,courierLng],[pickup.lat,pickup.lng],tgt]:[[pickup.lat,pickup.lng],tgt];
-      getRoute(rp).then(r=>{if(!r?.geo||!mapRef.current)return;
-        L.polyline(r.geo,{color:tracking?"#00b4ff":"#00ff87",weight:tracking?4:3,opacity:tracking?0.8:0.6,dashArray:tracking?undefined:"8 6"}).addTo(m);
-        const mid=r.geo[Math.floor(r.geo.length/2)];
-        L.marker(mid,{icon:L.divIcon({className:"",html:`<div style="background:rgba(14,15,22,0.92);color:${tracking?"#00b4ff":"#00ff87"};padding:5px 12px;border-radius:8px;font-size:11px;font-family:monospace;font-weight:700;border:1px solid rgba(255,255,255,0.1);white-space:nowrap">${r.km} km · ~${r.min} min</div>`,iconSize:[110,24],iconAnchor:[55,12]}),interactive:false}).addTo(m);
-        const pts:any[]=[[pickup.lat,pickup.lng],[fz.lat,fz.lng]];
-        if(showExact)pts.push([dropoff.lat,dropoff.lng]);if(courierLat&&courierLng)pts.push([courierLat,courierLng]);
+      if(singleLocation){
+        const pts:any[]=[[pickup.lat,pickup.lng]];
+        if(courierLat&&courierLng)pts.push([courierLat,courierLng]);
         bids?.forEach(b=>pts.push([b.lat,b.lng]));if(userLoc)pts.push(userLoc);
-        if(pts.length>1)m.fitBounds(L.latLngBounds(pts).pad(0.15))});
+        if(courierLat&&courierLng){
+          getRoute([[courierLat,courierLng],[pickup.lat,pickup.lng]]).then(r=>{if(!r?.geo||!mapRef.current)return;
+            L.polyline(r.geo,{color:"#00b4ff",weight:4,opacity:0.8}).addTo(m);
+            const mid=r.geo[Math.floor(r.geo.length/2)];
+            L.marker(mid,{icon:L.divIcon({className:"",html:`<div style="background:rgba(14,15,22,0.92);color:#00b4ff;padding:5px 12px;border-radius:8px;font-size:11px;font-family:monospace;font-weight:700;border:1px solid rgba(255,255,255,0.1);white-space:nowrap">${r.km} km · ~${r.min} min</div>`,iconSize:[110,24],iconAnchor:[55,12]}),interactive:false}).addTo(m)});
+        }else if(userLoc){
+          getRoute([userLoc,[pickup.lat,pickup.lng]]).then(r=>{if(!r?.geo||!mapRef.current)return;
+            L.polyline(r.geo,{color:"#00ff87",weight:3,opacity:0.6,dashArray:"8 6"}).addTo(m);
+            const mid=r.geo[Math.floor(r.geo.length/2)];
+            L.marker(mid,{icon:L.divIcon({className:"",html:`<div style="background:rgba(14,15,22,0.92);color:#00ff87;padding:5px 12px;border-radius:8px;font-size:11px;font-family:monospace;font-weight:700;border:1px solid rgba(255,255,255,0.1);white-space:nowrap">${r.km} km · ~${r.min} min</div>`,iconSize:[110,24],iconAnchor:[55,12]}),interactive:false}).addTo(m)});
+        }
+        if(pts.length>1)m.fitBounds(L.latLngBounds(pts).pad(0.15));
+      }else{
+        const tgt:[number,number]=showExact?[dropoff.lat,dropoff.lng]:[fuzzLoc(dropoff.lat,dropoff.lng,Math.round(pickup.lat*10000)).lat,fuzzLoc(dropoff.lat,dropoff.lng,Math.round(pickup.lat*10000)).lng];
+        const rp:[number,number][]=courierLat&&courierLng?[[courierLat,courierLng],[pickup.lat,pickup.lng],tgt]:[[pickup.lat,pickup.lng],tgt];
+        getRoute(rp).then(r=>{if(!r?.geo||!mapRef.current)return;
+          L.polyline(r.geo,{color:tracking?"#00b4ff":"#00ff87",weight:tracking?4:3,opacity:tracking?0.8:0.6,dashArray:tracking?undefined:"8 6"}).addTo(m);
+          const mid=r.geo[Math.floor(r.geo.length/2)];
+          L.marker(mid,{icon:L.divIcon({className:"",html:`<div style="background:rgba(14,15,22,0.92);color:${tracking?"#00b4ff":"#00ff87"};padding:5px 12px;border-radius:8px;font-size:11px;font-family:monospace;font-weight:700;border:1px solid rgba(255,255,255,0.1);white-space:nowrap">${r.km} km · ~${r.min} min</div>`,iconSize:[110,24],iconAnchor:[55,12]}),interactive:false}).addTo(m);
+          const fz2=fuzzLoc(dropoff.lat,dropoff.lng,Math.round(pickup.lat*10000));
+          const pts:any[]=[[pickup.lat,pickup.lng],[fz2.lat,fz2.lng]];
+          if(showExact)pts.push([dropoff.lat,dropoff.lng]);if(courierLat&&courierLng)pts.push([courierLat,courierLng]);
+          bids?.forEach(b=>pts.push([b.lat,b.lng]));if(userLoc)pts.push(userLoc);
+          if(pts.length>1)m.fitBounds(L.latLngBounds(pts).pad(0.15))});
+      }
     }catch(e){}},60);
     return()=>{clearTimeout(t);if(mapRef.current){try{mapRef.current.remove()}catch(e){}mapRef.current=null}}
-  },[pickup.lat,dropoff.lat,courierLat,courierLng,showExact,bids?.length,tracking]);
+  },[pickup.lat,dropoff.lat,courierLat,courierLng,showExact,bids?.length,tracking,singleLocation]);
   return <div ref={ref} style={{width:"100%",height:h,borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.05)"}}/>;
 }
 
@@ -174,54 +201,68 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);const bids=useBids(task._id);const actions=useTaskActions();
   const[open,setOpen]=useState(false);const[tab,setTab]=useState<"details"|"chat">("details");
   const[bidFee,setBidFee]=useState("");const[bidComment,setBidComment]=useState("");
-  const[showRating,setShowRating]=useState(false);const[profileId,setProfileId]=useState<Id<"users">|null>(null);
-  const[routeKm,setRouteKm]=useState<string|null>(null);
+  const[showRating,setShowRating]=useState<{name:string;runnerId?:string}|null>(null);const[profileId,setProfileId]=useState<Id<"users">|null>(null);
+  const[routeKm,setRouteKm]=useState<string|null>(null);const[proofText,setProofText]=useState("");
   const profile=useProfile(profileId);const st=STS[task.status]||STS.open;
-  const isOwner=userId&&task.posterId===userId;const isCourier=userId&&task.courierId===userId;
-  const canSee=isOwner||isCourier;const isTracking=task.status==="in_progress"&&canSee;
+  const isDel=!task.taskType||task.taskType==="delivery";
+  const maxR=task.maxRunners||1;const multi=maxR>1;
+  const taskRunners=useTaskRunners(multi?task._id:null);
+  const isOwner=userId&&task.posterId===userId;
+  const isCourier=multi?(taskRunners.some((tr:any)=>tr.runnerId===userId)):(userId&&task.courierId===userId);
+  const canSee=isOwner||isCourier;const isTracking=(task.status==="in_progress")&&canSee;
   const chatActive=task.status==="in_progress"||task.status==="delivered";
-  const total=task.itemCost+(task.acceptedFee??task.suggestedFee);
-  useCourierTracking(isTracking&&isCourier?task._id:null,isCourier?userId:null,!!isTracking&&!!isCourier);
-  useEffect(()=>{if(!open||!userLoc||task.status!=="open")return;getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]).then(r=>r&&setRouteKm(r.km))},[open,userLoc]);
+  const itemCost=task.itemCost||0;const total=itemCost+(task.acceptedFee??task.suggestedFee);
+  const locLat=isDel?task.pickupLat:(task.locationLat||task.pickupLat);const locLng=isDel?task.pickupLng:(task.locationLng||task.pickupLng);const locAddr=isDel?task.pickupAddr:(task.locationAddr||task.pickupAddr||"");
+  const myTrStatus=multi?taskRunners.find((tr:any)=>tr.runnerId===userId)?.status:null;
+  const isActiveRunner=multi?(myTrStatus==="accepted"):!!isCourier;
+  useCourierTracking(isTracking&&isActiveRunner?task._id:null,isActiveRunner&&userId?userId:null,!!isTracking&&isActiveRunner);
+  useEffect(()=>{if(!open||!userLoc||task.status!=="open")return;if(isDel){getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]).then(r=>r&&setRouteKm(r.km))}else{getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]).then(r=>r&&setRouteKm(r.km))}},[open,userLoc]);
   const bidMap=bids.filter((b:any)=>b.lat&&b.lng).map((b:any)=>({name:b.courierName,lat:b.lat,lng:b.lng,fee:b.fee,score:b.courierScore}));
-  const submitBid=async()=>{if(!bidFee||!userId||!userLoc)return;const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);const tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10;actions.placeBid({taskId:task._id,courierId:userId,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});setBidFee("");setBidComment("")};
+  const submitBid=async()=>{if(!bidFee||!userId||!userLoc)return;let tripKm:number;if(isDel){const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10}else{const route=await getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]);tripKm=route?parseFloat(route.km):Math.round(haversine(userLoc,[locLat,locLng])*10)/10}actions.placeBid({taskId:task._id,courierId:userId,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});setBidFee("");setBidComment("")};
   const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doCancel=async()=>{if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
+  const doSubmitProof=()=>{if(!isCourier||!userId)return;actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
 
   return <div style={{...S.card,borderLeft:`3px solid ${st.c}`}} onClick={()=>setOpen(!open)}>
     <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
       <div style={{flex:1,minWidth:0}}>
-        <div style={S.cardCat}>{CATS.find(c=>c.id===task.category)?.i} {task.category}</div>
+        <div style={S.cardCat}>{CATS.find(c=>c.id===task.category)?.i||"⚡"} {task.category}{!isDel&&task.taskType?` · ${task.taskType}`:""}</div>
         <div style={{fontSize:15,fontWeight:600,color:"#fff",marginBottom:3}}>{task.title}</div>
-        <div style={{fontSize:11,color:"#444"}}>{t("by")} <span style={{color:"#00ff87"}}>{task.posterName}</span> · {bids.length} {bids.length!==1?t("bids"):t("bid")}</div>
+        <div style={{fontSize:11,color:"#444"}}>{t("by")} <span style={{color:"#00ff87"}}>{task.posterName}</span> · {bids.length} {bids.length!==1?t("bids"):t("bid")}{multi&&<span style={{marginLeft:6,fontSize:9,color:"#ffd000",background:"rgba(255,208,0,0.06)",border:"1px solid rgba(255,208,0,0.12)",padding:"1px 6px",borderRadius:4}}>👥 {task.acceptedCount||0}/{maxR}</span>}{!isDel&&task.proofType&&task.proofType!=="none"?<span style={{marginLeft:6,fontSize:9,color:"#a855f7",background:"rgba(168,85,247,0.06)",border:"1px solid rgba(168,85,247,0.12)",padding:"1px 6px",borderRadius:4}}>📸 {task.proofType}</span>:null}</div>
       </div>
       <div className="dz-pricing-desk" style={{textAlign:"right",minWidth:110,flexShrink:0}}>
-        <div style={S.pr}><span style={S.prl}>Items</span><span style={S.prv}>{task.itemCost}</span></div>
-        <div style={S.pr}><span style={S.prl}>Delivery</span><span style={{...S.prv,color:"#00ff87"}}>{task.acceptedFee??task.suggestedFee}</span></div>
+        {isDel&&<div style={S.pr}><span style={S.prl}>Items</span><span style={S.prv}>{itemCost}</span></div>}
+        <div style={S.pr}><span style={S.prl}>{isDel?"Delivery":"Fee"}</span><span style={{...S.prv,color:"#00ff87"}}>{task.acceptedFee??task.suggestedFee}</span></div>
         <div style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#fff",textAlign:"right",marginTop:2}}>${total.toFixed(2)} <span style={{fontSize:9,color:"#666"}}>USDC</span></div>
         <span style={{...S.badge,color:st.c,background:st.bg,marginTop:4,display:"inline-block"}}>{st.l}</span>
       </div>
       <div className="dz-pricing-mob"><span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#fff"}}>${total.toFixed(2)} <span style={{fontSize:9,color:"#666"}}>USDC</span></span><span style={{...S.badge,color:st.c,background:st.bg}}>{st.l}</span></div>
     </div>
 
-    <div className="dz-route-col" style={{marginTop:10,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.025)",display:"flex",alignItems:"flex-start",gap:8}}>
+    {isDel?<div className="dz-route-col" style={{marginTop:10,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.025)",display:"flex",alignItems:"flex-start",gap:8}}>
       <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}><div style={S.dG}/><div><div style={S.rl}>{t("pickup_lbl")}</div><div style={{fontSize:11,color:"#777"}}>{task.pickupAddr}</div></div></div>
       <div className="dz-rline-h" style={{flex:"0 0 16px",height:2,background:"linear-gradient(90deg,#00ff87,#ff4757)",borderRadius:1,marginTop:12}}/><div className="dz-rline-v"/>
-      <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}><div style={S.dR}/><div><div style={S.rl}>{t("dropoff_lbl")} {!canSee&&<span style={{fontSize:7,color:"#ff4757",marginLeft:3}}>🛡</span>}</div><div style={{fontSize:11,color:"#777"}}>{canSee?task.dropoffAddr:maskAddr(task.dropoffAddr)}</div></div></div>
-    </div>
+      <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}><div style={S.dR}/><div><div style={S.rl}>{t("dropoff_lbl")} {!canSee&&<span style={{fontSize:7,color:"#ff4757",marginLeft:3}}>🛡</span>}</div><div style={{fontSize:11,color:"#777"}}>{canSee?task.dropoffAddr:maskAddr(task.dropoffAddr||"")}</div></div></div>
+    </div>:<div style={{marginTop:10,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.025)",display:"flex",alignItems:"center",gap:6}}>
+      <div style={S.dG}/><div><div style={S.rl}>{t("location_lbl")} {!canSee&&<span style={{fontSize:7,color:"#00ff87",marginLeft:3}}>🛡</span>}</div><div style={{fontSize:11,color:"#777"}}>{canSee?locAddr:maskAddr(locAddr)}</div></div>
+      {task.action&&<div style={{marginLeft:"auto",fontSize:10,color:"#ffd000",background:"rgba(255,208,0,0.06)",border:"1px solid rgba(255,208,0,0.12)",padding:"3px 8px",borderRadius:6,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.action.slice(0,40)}</div>}
+    </div>}
 
     {open&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.025)"}} onClick={e=>e.stopPropagation()}>
       {chatActive&&<div style={{display:"flex",gap:6,marginBottom:10}}><button style={{...S.tabBtn,...(tab==="details"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("details")}>📋 {t("details")}</button><button style={{...S.tabBtn,...(tab==="chat"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("chat")}>💬 {t("chat")}</button></div>}
       {tab==="chat"&&chatActive&&userId&&canSee?<ChatPanel taskId={task._id} userId={userId} myRole={isOwner?"poster":"courier"}/>:<>
-        <TaskMap pickup={{lat:task.pickupLat,lng:task.pickupLng,addr:task.pickupAddr}} dropoff={{lat:task.dropoffLat,lng:task.dropoffLng,addr:task.dropoffAddr}} privacyZone={task.privacyZone} courierLat={task.courierLat} courierLng={task.courierLng} bids={task.status==="open"?bidMap:undefined} userLoc={userLoc} showExact={!!canSee} tracking={!!isTracking} h={isTracking?320:240}/>
+        {isDel?<TaskMap pickup={{lat:task.pickupLat,lng:task.pickupLng,addr:task.pickupAddr}} dropoff={{lat:task.dropoffLat,lng:task.dropoffLng,addr:task.dropoffAddr||""}} privacyZone={task.privacyZone} courierLat={task.courierLat} courierLng={task.courierLng} bids={task.status==="open"?bidMap:undefined} userLoc={userLoc} showExact={!!canSee} tracking={!!isTracking} h={isTracking?320:240}/>
+        :<TaskMap pickup={{lat:locLat,lng:locLng,addr:locAddr}} dropoff={{lat:locLat,lng:locLng,addr:locAddr}} privacyZone={task.privacyZone} courierLat={task.courierLat} courierLng={task.courierLng} bids={task.status==="open"?bidMap:undefined} userLoc={userLoc} showExact={!!canSee} tracking={!!isTracking} h={isTracking?320:240} singleLocation/>}
         {isTracking&&<div style={S.trackBar}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700}}>{t("live")}</span><span style={{color:"#777"}}>{t("tracking")}</span></div>}
-        <div style={{marginTop:10,marginBottom:8}}><div style={S.detLbl}>{t("instructions_lbl")}</div><div style={{fontSize:12,color:"#999",lineHeight:1.6}}>{task.details}</div></div>
+        {!isDel&&task.action&&<div style={{marginTop:10,marginBottom:8}}><div style={S.detLbl}>{t("action_lbl")}</div><div style={{fontSize:12,color:"#ffd000",lineHeight:1.6}}>{task.action}</div></div>}
+        <div style={{marginTop:10,marginBottom:8}}><div style={S.detLbl}>{isDel?t("instructions_lbl"):t("details")}</div><div style={{fontSize:12,color:"#999",lineHeight:1.6}}>{task.details}</div></div>
+        {!isDel&&task.targetPerson&&<div style={{marginTop:4,marginBottom:8}}><div style={S.detLbl}>{t("target_person")}</div><div style={{fontSize:12,color:"#00b4ff"}}>{task.targetPerson}</div></div>}
         <div style={S.escBox}><div style={{fontSize:9,color:"#444",fontFamily:"monospace",letterSpacing:1,marginBottom:6}}>🔒 {t("escrow_lbl")}</div>
-          {task.items?.length>0?task.items.map((it:any,i:number)=><div key={i} style={S.escR}><span>🛒 {it.name}</span><span>{it.cost}</span></div>):<div style={S.escR}><span>🛒 {t("items_lbl")}</span><span>{task.itemCost}</span></div>}
-          <div style={S.escR}><span>🚴 {t("delivery_lbl")}</span><span style={{color:"#00ff87"}}>{task.acceptedFee??task.suggestedFee}</span></div><div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>{t("total")}</span><span style={{fontWeight:700,color:"#fff"}}>${total.toFixed(2)} USDC</span></div></div>
+          {isDel&&(task.items?.length>0?task.items.map((it:any,i:number)=><div key={i} style={S.escR}><span>🛒 {it.name}</span><span>{it.cost}</span></div>):<div style={S.escR}><span>🛒 {t("items_lbl")}</span><span>{itemCost}</span></div>)}
+          <div style={S.escR}><span>{isDel?"🚴 "+t("delivery_lbl"):"🏃 "+t("runner_fee")}{multi?` × ${maxR}`:""}</span><span style={{color:"#00ff87"}}>{task.acceptedFee??task.suggestedFee}{multi?` × ${maxR}`:""}</span></div><div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>{t("total")}</span><span style={{fontWeight:700,color:"#fff"}}>${task.totalEscrowed.toFixed(2)} USDC</span></div></div>
 
-        {task.status==="open"&&<div style={{marginTop:8}}>
-          {routeKm&&!isOwner&&<div style={{fontSize:11,color:"#00b4ff",padding:"6px 10px",borderRadius:8,background:"rgba(0,180,255,0.05)",border:"1px solid rgba(0,180,255,0.1)",marginBottom:8}}>🛣 {routeKm} {t("road_km")}</div>}
+        {(task.status==="open"||(multi&&task.status==="in_progress"&&(task.acceptedCount||0)<maxR))&&<div style={{marginTop:8}}>
+          {routeKm&&!isOwner&&<div style={{fontSize:11,color:"#00b4ff",padding:"6px 10px",borderRadius:8,background:"rgba(0,180,255,0.05)",border:"1px solid rgba(0,180,255,0.1)",marginBottom:8}}>🛣 {routeKm} {isDel?t("road_km"):t("road_km_single")}</div>}
           <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:8}}>🏷 {t("bids_lbl")} ({bids.length})</div>
           {bids.map((b:any)=><div key={b._id} style={S.bidCard}><div style={{display:"flex",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
             <div style={S.bidAv} onClick={()=>setProfileId(b.courierId)}>{b.courierName[0]}</div>
@@ -231,23 +272,47 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           {bids.length===0&&<div style={S.empty}>{t("no_bids")}</div>}
           {isOwner&&<div style={{display:"flex",gap:6,marginTop:8}}>
             <button style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,71,87,0.2)",background:"rgba(255,71,87,0.04)",color:"#ff4757",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={doCancel}>✕ {t("cancel_task")} · {t("refund")} ${total.toFixed(2)}</button>
-            <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i} ${task.category} · ${t("pickup_lbl")}: ${task.pickupAddr}\n${t("delivery_lbl")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`GIGS.MOM: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
+            <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i||"⚡"} ${task.category}${isDel?` · ${t("pickup_lbl")}: ${task.pickupAddr}`:` · ${t("location_lbl")}: ${locAddr}`}\n${isDel?t("delivery_lbl"):t("runner_fee")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`GIGS.MOM: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
           </div>}
           {!isOwner&&userId&&userLoc&&<div style={{marginTop:10,padding:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12}}>
             <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>{t("place_bid")}</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><div style={{flex:"1 1 100px"}}><label style={S.fLbl}>{t("fee_lbl")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={String(task.suggestedFee)} value={bidFee} onChange={e=>setBidFee(e.target.value)}/></div><div style={{flex:"2 1 160px"}}><label style={S.fLbl}>{t("comment_lbl")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={t("comment_ph")} value={bidComment} onChange={e=>setBidComment(e.target.value)}/></div></div>
-            {routeKm&&<div style={{fontSize:11,color:"#00b4ff",marginTop:8}}>🛣 ~{routeKm} {t("road_km")}</div>}
+            {routeKm&&<div style={{fontSize:11,color:"#00b4ff",marginTop:8}}>🛣 ~{routeKm} {isDel?t("road_km"):t("road_km_single")}</div>}
             <button style={{...S.postBtn,marginTop:8,padding:14,fontSize:13}} onClick={submitBid}>⚡ {t("submit_bid")}</button>
           </div>}
         </div>}
-        {task.status==="in_progress"&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>🚴 {task.courierName}</span>{isCourier&&<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>}</div>}
-        {task.status==="delivered"&&isOwner&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>setShowRating(true)}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
-        {task.status==="delivered"&&isCourier&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for poster to confirm. Auto-releases in 2 hours.</div>}
+        {task.status==="in_progress"&&!multi&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>{isDel?"🚴":"🏃"} {task.courierName}</span>
+          {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>
+          :<div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:140}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
+            <button style={{...S.bidAccBtn,minHeight:40}} onClick={doSubmitProof}>✅ {t("submit_proof")}</button>
+          </div>)}
+        </div>}
+        {/* Multi-runner: show all runners and their status */}
+        {multi&&(task.status==="open"||task.status==="in_progress"||task.status==="delivered")&&taskRunners.length>0&&<div style={{marginTop:10}}>
+          <div style={{fontSize:12,fontWeight:600,color:"#ffd000",marginBottom:6}}>👥 Runners ({taskRunners.length}/{maxR})</div>
+          {taskRunners.map((tr:any)=><div key={tr._id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:10,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",marginBottom:4}}>
+            <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#151520,#252540)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#00ff87",flexShrink:0}}>{tr.runnerName[0]}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"#fff"}}>{tr.runnerName}</div><div style={{fontSize:10,color:"#555"}}>${tr.fee.toFixed(2)} · {tr.status}</div></div>
+            {tr.proofData&&<span style={{fontSize:9,color:"#a855f7"}}>📸</span>}
+            {/* Runner can submit proof */}
+            {userId===tr.runnerId&&tr.status==="accepted"&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+              {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:11,padding:"6px 8px",width:100}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
+              <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={doSubmitProof}>✅</button>
+            </div>}
+            {/* Poster can confirm delivered runners */}
+            {isOwner&&tr.status==="delivered"&&<button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>setShowRating({name:tr.runnerName,runnerId:tr.runnerId})}>✓ Confirm</button>}
+            {tr.status==="completed"&&<span style={{fontSize:10,color:"#00ff87",fontWeight:700}}>✓</span>}
+          </div>)}
+        </div>}
+        {task.status==="delivered"&&isOwner&&!multi&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>setShowRating({name:task.courierName||"Runner"})}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
+        {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for poster to confirm. Auto-releases in 2 hours.</div>}
+        {task.proofData&&!multi&&<div style={{padding:10,borderRadius:10,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",marginTop:8,fontSize:12,color:"#a855f7"}}>📸 {t("proof_lbl")}: {task.proofData}</div>}
         {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{const reason=prompt("Describe the issue:");if(reason&&userId)actions.openDispute({taskId:task._id,userId,reason})}}>⚠️ Open Dispute</button>}
         {task.status==="disputed"&&<div style={{padding:14,borderRadius:12,background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.2)",marginTop:8}}><div style={{fontSize:13,fontWeight:700,color:"#ffa500",marginBottom:4}}>⚠️ Disputed</div><div style={{fontSize:12,color:"#999"}}>Opened by {task.disputeBy}: "{task.disputeReason}"</div><div style={{fontSize:11,color:"#666",marginTop:4}}>Funds are held until resolved. Contact support.</div></div>}
       </>}
       {profileId&&profile&&<ProfilePopup profile={profile} onClose={()=>setProfileId(null)}/>}
-      {showRating&&<RatingModal name={task.courierName||"Courier"} onRate={async(s,c)=>{try{const r=await fetch(`${SERVER_URL}/confirm-delivery`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId,ratingScore:s,ratingComment:c})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}}} onClose={()=>setShowRating(false)}/>}
+      {showRating&&<RatingModal name={showRating.name} onRate={async(s,c)=>{try{const body:any={taskId:task._id,posterId:userId,ratingScore:s,ratingComment:c};if(showRating.runnerId)body.runnerId=showRating.runnerId;const r=await fetch(`${SERVER_URL}/confirm-delivery`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}}} onClose={()=>setShowRating(null)}/>}
     </div>}
   </div>;
 }
@@ -257,76 +322,108 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
   const[cat,setCat]=useState("all");const[search,setSearch]=useState("");
   const all=[...activeTasks.filter(tk=>tk.status!=="open"),...openTasks];
   const unique=all.filter((tk,i,a)=>a.findIndex(x=>x._id===tk._id)===i);
-  const visible=unique.filter(tk=>{if(tk.status==="completed"||tk.status==="cancelled")return false;return(cat==="all"||tk.category===cat)&&tk.title.toLowerCase().includes(search.toLowerCase())});
-  const catLabels:{[k:string]:string}={all:t("all"),food:t("food"),grocery:t("grocery"),errand:t("errand")};
+  const visible=unique.filter(tk=>{if(tk.status==="completed"||tk.status==="cancelled")return false;return(cat==="all"||tk.category===cat||tk.taskType===cat)&&tk.title.toLowerCase().includes(search.toLowerCase())});
   return <div style={{paddingTop:20}}>
     <div style={{textAlign:"center",marginBottom:24}}>
-      <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>Anything delivered.</h1>
-      <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>Chat. Track. Rate.</p>
+      <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>{t("tagline")}</h1>
+      <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>{t("tagline2")}</p>
     </div>
     <h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("live_tasks")}</h2>
     <p style={{fontSize:12,color:"#3a3a4a",marginTop:2}}>{openTasks.length} {t("open_tap")}</p>
     <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:"0 14px",marginTop:12,marginBottom:10}}><span>🔍</span><input style={{flex:1,background:"none",border:"none",color:"#fff",fontSize:14,padding:"12px 0",fontFamily:"'Outfit',sans-serif"}} placeholder={t("search")} value={search} onChange={e=>setSearch(e.target.value)}/></div>
-    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>{CATS.map(c=><button key={c.id} onClick={()=>setCat(c.id)} style={{...S.catBtn,...(cat===c.id?S.catAct:{}),whiteSpace:"nowrap"}}>{c.i} {catLabels[c.id]||c.l}</button>)}</div>
+    <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:4}}>{CATS.map(c=><button key={c.id} onClick={()=>setCat(c.id)} style={{...S.catBtn,...(cat===c.id?S.catAct:{}),whiteSpace:"nowrap"}}>{c.i} {c.l}</button>)}</div>
     {visible.map(tk=><TaskCard key={tk._id} task={tk} userLoc={userLoc}/>)}
     {visible.length===0&&<div style={S.empty}>{t("no_tasks")}</div>}
   </div>;
 }
 
+const TASK_TYPES=[
+  {id:"delivery",l:"Delivery",i:"📦",needsDropoff:true,needsItems:true},
+  {id:"go-somewhere",l:"Go Somewhere",i:"📍",needsDropoff:false,needsItems:false},
+  {id:"interact",l:"Interact",i:"🤝",needsDropoff:false,needsItems:false},
+  {id:"gather-info",l:"Gather Info",i:"🔍",needsDropoff:false,needsItems:false},
+  {id:"physical-action",l:"Physical",i:"💪",needsDropoff:false,needsItems:false},
+  {id:"verification",l:"Verify",i:"✅",needsDropoff:false,needsItems:false},
+];
+const PROOF_TYPES=["photo","video","text","gps","none"];
+
 function PostView({userLoc}:{userLoc:[number,number]|null}){
   const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);const{createTask}=useTaskActions();
-  const[f,sF]=useState({title:"",pickupAddr:"",dropoffAddr:"",suggestedFee:"",details:"",category:"food",privacyZone:"100"});
-  const[items,setItems]=useState([{name:"",cost:""}]);
-  const[ok,setOk]=useState(false);const[pLat,sPLat]=useState(0);const[pLng,sPLng]=useState(0);const[dLat,sDLat]=useState(0);const[dLng,sDLng]=useState(0);
+  const[taskType,setTaskType]=useState("delivery");
+  const[f,sF]=useState({title:"",pickupAddr:"",dropoffAddr:"",locationAddr:"",suggestedFee:"",details:"",action:"",category:"delivery",privacyZone:"100",proofType:"photo",targetPerson:""});
+  const[items,setItems]=useState([{name:"",cost:""}]);const[maxRunners,setMaxRunners]=useState("1");
+  const[ok,setOk]=useState(false);const[pLat,sPLat]=useState(0);const[pLng,sPLng]=useState(0);const[dLat,sDLat]=useState(0);const[dLng,sDLng]=useState(0);const[lLat,sLLat]=useState(0);const[lLng,sLLng]=useState(0);
   const set=(k:string)=>(e:any)=>sF({...f,[k]:e.target.value});
   const setItem=(i:number,k:string,v:string)=>setItems(items.map((it,idx)=>idx===i?{...it,[k]:v}:it));
   const addItem=()=>setItems([...items,{name:"",cost:""}]);
   const removeItem=(i:number)=>setItems(items.filter((_,idx)=>idx!==i));
-  const itemCostTotal=items.reduce((s,it)=>s+(parseFloat(it.cost)||0),0);
-  const total=itemCostTotal+(parseFloat(f.suggestedFee)||0);
+  const tt=TASK_TYPES.find(x=>x.id===taskType)||TASK_TYPES[0];
+  const itemCostTotal=tt.needsItems?items.reduce((s,it)=>s+(parseFloat(it.cost)||0),0):0;
+  const nRunners=Math.max(1,parseInt(maxRunners)||1);
+  const feePerRunner=parseFloat(f.suggestedFee)||0;
+  const total=nRunners>1?feePerRunner*nRunners:itemCostTotal+feePerRunner;
   const onPickup=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,pickupAddr:addr}));sPLat(lat);sPLng(lng)};
   const onDropoff=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,dropoffAddr:addr}));sDLat(lat);sDLng(lng)};
+  const onLocation=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,locationAddr:addr}));sLLat(lat);sLLng(lng)};
   const submit=async()=>{
-    if(!f.title||!f.pickupAddr||!f.dropoffAddr||!userId)return;
-    const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);
-    if(validItems.length===0)return;
+    if(!f.title||!userId)return;
+    if(taskType==="delivery"&&(!f.pickupAddr||!f.dropoffAddr))return;
+    if(taskType!=="delivery"&&!f.locationAddr)return;
+    if(taskType==="delivery"){const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);if(validItems.length===0)return;}
     if(!walletAddr){await connect();return;}
     try{
-      const res=await payFetch(`${SERVER_URL}/task`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({title:f.title,category:f.category,details:f.details||"No instructions.",pickupAddr:f.pickupAddr,pickupLat:pLat||50.85+(Math.random()-0.5)*0.02,pickupLng:pLng||4.35+(Math.random()-0.5)*0.02,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85+(Math.random()-0.5)*0.02,dropoffLng:dLng||4.35+(Math.random()-0.5)*0.02,privacyZone:parseInt(f.privacyZone)||100,itemCost:itemCostTotal,suggestedFee:parseFloat(f.suggestedFee)||0,items:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)})),posterId:userId}),
-      });
+      const body:any={title:f.title,category:f.category,details:f.details||f.action||"No instructions.",taskType,privacyZone:parseInt(f.privacyZone)||100,suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId};
+      if(taskType==="delivery"){
+        const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);
+        Object.assign(body,{pickupAddr:f.pickupAddr,pickupLat:pLat||50.85,pickupLng:pLng||4.35,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85,dropoffLng:dLng||4.35,itemCost:itemCostTotal,items:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)}))});
+      }else{
+        Object.assign(body,{locationAddr:f.locationAddr,locationLat:lLat||50.85,locationLng:lLng||4.35,action:f.action,proofType:f.proofType,targetPerson:f.targetPerson||undefined});
+      }
+      const res=await payFetch(`${SERVER_URL}/task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if(!res.ok){const e=await res.json();throw new Error(e.error);}
       setOk(true);setTimeout(()=>setOk(false),3500);
-      sF({title:"",pickupAddr:"",dropoffAddr:"",suggestedFee:"",details:"",category:"food",privacyZone:"100"});
-      setItems([{name:"",cost:""}]);sPLat(0);sPLng(0);sDLat(0);sDLng(0);
+      sF({title:"",pickupAddr:"",dropoffAddr:"",locationAddr:"",suggestedFee:"",details:"",action:"",category:taskType==="delivery"?"delivery":f.category,privacyZone:"100",proofType:"photo",targetPerson:""});
+      setItems([{name:"",cost:""}]);setMaxRunners("1");sPLat(0);sPLng(0);sDLat(0);sDLng(0);sLLat(0);sLLng(0);
     }catch(e:any){alert(e.message);}
   };
+  const typeBtnS=(active:boolean):any=>({padding:"8px 14px",borderRadius:10,border:active?"1px solid #00ff87":"1px solid rgba(255,255,255,0.06)",background:active?"rgba(0,255,135,0.08)":"rgba(255,255,255,0.015)",color:active?"#00ff87":"#888",fontSize:12,fontWeight:active?700:500,fontFamily:"'Outfit',sans-serif",whiteSpace:"nowrap"});
   return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("post_title")}</h2>
     {ok&&<div style={S.successBanner}>✓ {t("posted_ok",total.toFixed(2))}</div>}
     {!walletAddr&&<div style={{padding:14,borderRadius:12,background:"rgba(0,82,255,0.04)",border:"1px solid rgba(0,82,255,0.12)",marginTop:12,textAlign:"center"}}><span style={{color:"#0052ff",fontSize:13}}>{t("connect_to_use")}</span></div>}
-    <div className="dz-form-grid">
-      <div><label style={S.fLbl}>{t("what")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={t("what_ph")} value={f.title} onChange={set("title")}/></div>
-      <div><label style={S.fLbl}>{t("category")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="food">🍔 {t("food")}</option><option value="grocery">🛒 {t("grocery")}</option><option value="errand">📦 {t("errand")}</option></select></div>
-      <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("pickup")}</label><AddressMapPicker label={t("pickup_ph")} value={f.pickupAddr} lat={pLat} lng={pLng} onSelect={onPickup} userLoc={userLoc}/></div>
-      <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("dropoff")}</label><AddressMapPicker label={t("dropoff_ph")} value={f.dropoffAddr} lat={dLat} lng={dLng} onSelect={onDropoff} userLoc={userLoc}/></div>
-      <div><label style={S.fLbl}>{t("delivery_fee")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={f.suggestedFee} onChange={set("suggestedFee")}/></div>
-      <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.privacyZone} onChange={set("privacyZone")}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
-      <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("instructions")}</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder={t("instructions_ph")} value={f.details} onChange={set("details")}/></div>
+    <div style={{display:"flex",gap:6,marginTop:14,marginBottom:4,overflowX:"auto",paddingBottom:4}}>
+      {TASK_TYPES.map(tp=><button key={tp.id} onClick={()=>{setTaskType(tp.id);sF(p=>({...p,category:tp.id==="delivery"?"delivery":tp.id}))}} style={typeBtnS(taskType===tp.id)}>{tp.i} {tp.l}</button>)}
     </div>
-    <div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><label style={S.fLbl}>🛒 {t("items")}</label><button style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,255,135,0.15)",background:"rgba(0,255,135,0.04)",color:"#00ff87",fontFamily:"'Outfit',sans-serif"}} onClick={addItem}>{t("add_item")}</button></div>
+    <div className="dz-form-grid">
+      <div><label style={S.fLbl}>{t("what")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={taskType==="delivery"?t("what_ph"):"Task title..."} value={f.title} onChange={set("title")}/></div>
+      {taskType!=="delivery"&&<div><label style={S.fLbl}>Category</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="errand">🏃 Errand</option><option value="social">👋 Social</option><option value="info">🔍 Info</option><option value="verification">✅ Verify</option><option value="custom">⚙️ Custom</option></select></div>}
+      {taskType==="delivery"&&<div><label style={S.fLbl}>{t("category")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="delivery">📦 Delivery</option><option value="food">🍔 {t("food")}</option><option value="grocery">🛒 {t("grocery")}</option><option value="errand">📦 {t("errand")}</option></select></div>}
+      {taskType==="delivery"&&<>
+        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("pickup")}</label><AddressMapPicker label={t("pickup_ph")} value={f.pickupAddr} lat={pLat} lng={pLng} onSelect={onPickup} userLoc={userLoc}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("dropoff")}</label><AddressMapPicker label={t("dropoff_ph")} value={f.dropoffAddr} lat={dLat} lng={dLng} onSelect={onDropoff} userLoc={userLoc}/></div>
+      </>}
+      {taskType!=="delivery"&&<>
+        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>📍 Location</label><AddressMapPicker label="Where should the runner go?" value={f.locationAddr} lat={lLat} lng={lLng} onSelect={onLocation} userLoc={userLoc}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>🎯 Action</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder="What should the runner do there?" value={f.action} onChange={set("action")}/></div>
+        <div><label style={S.fLbl}>📸 Proof type</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.proofType} onChange={set("proofType")}>{PROOF_TYPES.map(p=><option key={p} value={p}>{p==="photo"?"📸 Photo":p==="video"?"🎥 Video":p==="text"?"📝 Text":p==="gps"?"📍 GPS":p==="none"?"— None":p}</option>)}</select></div>
+        {(taskType==="interact"||taskType==="verification")&&<div><label style={S.fLbl}>👤 Target person</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="Who to meet or verify?" value={f.targetPerson} onChange={set("targetPerson")}/></div>}
+      </>}
+      <div><label style={S.fLbl}>{taskType==="delivery"?t("delivery_fee"):"💰 Runner fee (USDC)"}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={f.suggestedFee} onChange={set("suggestedFee")}/></div>
+      {taskType!=="delivery"&&<div><label style={S.fLbl}>👥 Runners needed</label><input type="number" min="1" max="100" style={{...S.fInp,fontSize:14,padding:12}} placeholder="1" value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/>{nRunners>1&&<div style={{fontSize:9,color:"#ffd000",marginTop:3}}>⚡ {nRunners} runners × ${feePerRunner.toFixed(2)} = ${total.toFixed(2)} USDC total</div>}</div>}
+      <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.privacyZone} onChange={set("privacyZone")}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
+      {taskType==="delivery"&&<div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("instructions")}</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder={t("instructions_ph")} value={f.details} onChange={set("details")}/></div>}
+    </div>
+    {tt.needsItems&&<div style={{marginTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><label style={S.fLbl}>🛒 {t("items")}</label><button style={{fontSize:11,padding:"5px 12px",borderRadius:8,border:"1px solid rgba(0,255,135,0.15)",background:"rgba(0,255,135,0.04)",color:"#00ff87",fontFamily:"'Outfit',sans-serif"}} onClick={addItem}>{t("add_item")}</button></div>
       {items.map((it,i)=><div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
         <input style={{...S.fInp,flex:2,fontSize:13,padding:"10px 12px"}} placeholder={t("item_name")} value={it.name} onChange={e=>setItem(i,"name",e.target.value)}/>
         <input style={{...S.fInp,flex:1,fontSize:13,padding:"10px 12px"}} placeholder={t("cost")} value={it.cost} onChange={e=>setItem(i,"cost",e.target.value)}/>
         {items.length>1&&<button style={{width:34,height:34,borderRadius:8,border:"1px solid rgba(255,71,87,0.15)",background:"rgba(255,71,87,0.04)",color:"#ff4757",flexShrink:0,fontSize:14}} onClick={()=>removeItem(i)}>✕</button>}
       </div>)}
-    </div>
-    {itemCostTotal>0&&<div style={{...S.escBox,marginTop:12}}>
-      {items.filter(it=>it.name&&parseFloat(it.cost)>0).map((it,i)=><div key={i} style={S.escR}><span>{it.name}</span><span>{parseFloat(it.cost).toFixed(1)}</span></div>)}
-      <div style={S.escR}><span>🚴 {t("delivery_lbl")}</span><span>{f.suggestedFee||"0"}</span></div>
-      <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>🔒 {t("total")}</span><span style={{fontWeight:700,color:"#00ff87"}}>${total.toFixed(2)} USDC</span></div>
     </div>}
+    <div style={{...S.escBox,marginTop:12}}>
+      {tt.needsItems&&items.filter(it=>it.name&&parseFloat(it.cost)>0).map((it,i)=><div key={i} style={S.escR}><span>{it.name}</span><span>{parseFloat(it.cost).toFixed(1)}</span></div>)}
+      <div style={S.escR}><span>{taskType==="delivery"?"🚴 "+t("delivery_lbl"):"🏃 Runner fee"}{nRunners>1?` × ${nRunners}`:""}</span><span>{nRunners>1?`${feePerRunner||0} × ${nRunners}`:(f.suggestedFee||"0")}</span></div>
+      <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>🔒 {t("total")}</span><span style={{fontWeight:700,color:"#00ff87"}}>${total.toFixed(2)} USDC</span></div>
+    </div>
     {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}
     {walletAddr&&<button style={{...S.postBtn,padding:16,fontSize:15,marginTop:16}} onClick={submit}>🔒 {t("post_btn")} · {total>0?"$"+total.toFixed(2)+" USDC":""}</button>}
   </div>;
@@ -347,31 +444,33 @@ function WalletView(){
     </div>
 
     {courierHist.length>0&&<div style={{marginTop:20}}>
-      <div style={{fontSize:15,fontWeight:600,color:"#00ff87",marginBottom:4}}>🚴 {t("delivery_history")} ({courierHist.length})</div>
+      <div style={{fontSize:15,fontWeight:600,color:"#00ff87",marginBottom:4}}>🏃 {t("runner_history")} ({courierHist.length})</div>
       <div style={{fontSize:12,color:"#666",marginBottom:10}}>{totalKm.toFixed(1)} {t("km")} · ${totalEarned.toFixed(2)} USDC {t("earned")}</div>
-      {courierHist.map((h:any)=><div key={h._id} style={{background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:12,marginBottom:8}}>
+      {courierHist.map((h:any)=>{const hDel=!h.taskType||h.taskType==="delivery";return <div key={h._id} style={{background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:12,marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
           <span style={{fontSize:13,fontWeight:600,color:"#fff"}}>{h.title}</span>
           <span style={{fontSize:12,fontFamily:"monospace",color:h.status==="completed"?"#00ff87":"#ff4757",fontWeight:700}}>${h.acceptedFee.toFixed(2)}</span>
         </div>
-        <div style={{fontSize:11,color:"#555"}}>{h.tripKm.toFixed(1)} {t("km")} · {CATS.find(c=>c.id===h.category)?.i} {h.category}</div>
-        <div style={{fontSize:10,color:"#444",marginTop:4}}>📍 {h.pickupAddr} → {h.dropoffAddr}</div>
+        <div style={{fontSize:11,color:"#555"}}>{h.tripKm.toFixed(1)} {t("km")} · {CATS.find(c=>c.id===h.category)?.i||"⚡"} {h.category}{!hDel&&h.taskType?` · ${h.taskType}`:""}</div>
+        <div style={{fontSize:10,color:"#444",marginTop:4}}>📍 {hDel?(h.pickupAddr+" → "+h.dropoffAddr):(h.locationAddr||h.pickupAddr||"")}</div>
         {h.items?.length>0&&<div style={{fontSize:10,color:"#444",marginTop:2}}>🛒 {h.items.map((it:any)=>it.name).join(", ")}</div>}
-      </div>)}
+        {!hDel&&h.action&&<div style={{fontSize:10,color:"#ffd000",marginTop:2}}>🎯 {h.action}</div>}
+      </div>})}
     </div>}
 
     {posterHist.length>0&&<div style={{marginTop:20}}>
       <div style={{fontSize:15,fontWeight:600,color:"#0052ff",marginBottom:10}}>📝 {t("post_history")} ({posterHist.length})</div>
-      {posterHist.map((h:any)=><div key={h._id} style={{background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:12,marginBottom:8}}>
+      {posterHist.map((h:any)=>{const hDel=!h.taskType||h.taskType==="delivery";return <div key={h._id} style={{background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:12,marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
           <span style={{fontSize:13,fontWeight:600,color:"#fff"}}>{h.title}</span>
           <span style={{fontSize:12,fontFamily:"monospace",color:h.status==="completed"?"#00ff87":"#ff4757",fontWeight:700}}>${h.totalEscrowed.toFixed(2)}</span>
         </div>
-        <div style={{fontSize:11,color:"#555"}}>{CATS.find(c=>c.id===h.category)?.i} {h.category}{h.courierName?` · 🚴 ${h.courierName}`:""}</div>
-        <div style={{fontSize:10,color:"#444",marginTop:4}}>📍 {h.pickupAddr} → {h.dropoffAddr}</div>
+        <div style={{fontSize:11,color:"#555"}}>{CATS.find(c=>c.id===h.category)?.i||"⚡"} {h.category}{h.courierName?` · ${hDel?"🚴":"🏃"} ${h.courierName}`:""}</div>
+        <div style={{fontSize:10,color:"#444",marginTop:4}}>📍 {hDel?(h.pickupAddr+" → "+(h.dropoffAddr||"")):(h.locationAddr||h.pickupAddr||"")}</div>
         {h.items?.length>0&&<div style={{fontSize:10,color:"#444",marginTop:2}}>🛒 {h.items.map((it:any)=>`${it.name} $${it.cost.toFixed(2)}`).join(", ")}</div>}
+        {!hDel&&h.action&&<div style={{fontSize:10,color:"#ffd000",marginTop:2}}>🎯 {h.action}</div>}
         <div style={{fontSize:10,color:"#333",marginTop:2}}>{h.details}</div>
-      </div>)}
+      </div>})}
     </div>}
 
     <div style={{marginTop:20}}><div style={{fontSize:15,fontWeight:600,color:"#fff",marginBottom:10}}>{t("protocol")}</div><div style={{display:"flex",gap:8}}><div style={S.pStat}><div style={S.pStatN}>{stats.open}</div><div style={S.pStatL}>{t("open_stat")}</div></div><div style={S.pStat}><div style={S.pStatN}>{stats.completed}</div><div style={S.pStatL}>{t("done")}</div></div><div style={S.pStat}><div style={S.pStatN}>${stats.burned.toFixed(2)}</div><div style={S.pStatL}>{t("burned")}</div></div></div></div>
@@ -380,9 +479,17 @@ function WalletView(){
 
 function HowView(){
   const t=useLang();
-  const steps=[{i:"🔑",tk:"s1t" as const,dk:"s1d" as const},{i:"📝",tk:"s2t" as const,dk:"s2d" as const},{i:"🏷",tk:"s3t" as const,dk:"s3d" as const},{i:"👆",tk:"s4t" as const,dk:"s4d" as const},{i:"🚴",tk:"s5t" as const,dk:"s5d" as const},{i:"⭐",tk:"s6t" as const,dk:"s6d" as const}];
+  const steps=[{i:"🔑",tk:"s1t" as const,dk:"s1d" as const},{i:"📝",tk:"s2t" as const,dk:"s2d" as const},{i:"🏷",tk:"s3t" as const,dk:"s3d" as const},{i:"👆",tk:"s4t" as const,dk:"s4d" as const},{i:"🏃",tk:"s5t" as const,dk:"s5d" as const},{i:"⭐",tk:"s6t" as const,dk:"s6d" as const}];
   return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("how_title")}</h2>
+    <div style={{padding:16,borderRadius:14,background:"rgba(0,255,135,0.02)",border:"1px solid rgba(0,255,135,0.06)",marginBottom:16,marginTop:10}}>
+      <div style={{fontSize:14,color:"#00ff87",fontWeight:600,marginBottom:6}}>{t("tagline")}</div>
+      <div style={{fontSize:12,color:"#777",lineHeight:1.6}}>GIGS.MOM is an agentic commerce protocol. Anyone — human or AI agent — can post tasks that need a human in the physical world: deliveries, errands, interactions, verifications, and more. Runners bid, get picked, complete the task, submit proof, and get paid in USDC.</div>
+    </div>
     <div className="dz-steps-grid">{steps.map((s,i)=><div key={i} style={{padding:"18px 16px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",position:"relative"}}><div style={{fontFamily:"monospace",fontSize:9,color:"#1a1a2a",position:"absolute",top:10,right:12}}>{String(i+1).padStart(2,"0")}</div><div style={{fontSize:28,marginBottom:10}}>{s.i}</div><div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:5}}>{t(s.tk)}</div><div style={{fontSize:12,color:"#666",lineHeight:1.5}}>{t(s.dk)}</div></div>)}</div>
+    <div style={{marginTop:20}}>
+      <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>Task Types</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TASK_TYPES.map(tp=><div key={tp.id} style={{padding:"8px 14px",borderRadius:10,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",fontSize:12,color:"#888"}}>{tp.i} {tp.l}</div>)}</div>
+    </div>
   </div>;
 }
 

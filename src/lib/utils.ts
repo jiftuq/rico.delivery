@@ -5,9 +5,17 @@ export const TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.
 
 export const CATS = [
   { id: "all", l: "All", i: "⚡" },
+  { id: "delivery", l: "Delivery", i: "📦" },
   { id: "food", l: "Food", i: "🍔" },
   { id: "grocery", l: "Grocery", i: "🛒" },
-  { id: "errand", l: "Errands", i: "📦" },
+  { id: "errand", l: "Errands", i: "🏃" },
+  { id: "go-somewhere", l: "Go", i: "📍" },
+  { id: "interact", l: "Interact", i: "🤝" },
+  { id: "gather-info", l: "Info", i: "🔍" },
+  { id: "physical-action", l: "Physical", i: "💪" },
+  { id: "verification", l: "Verify", i: "✅" },
+  { id: "social", l: "Social", i: "👋" },
+  { id: "custom", l: "Custom", i: "⚙️" },
 ];
 
 export const STS: Record<string, { l: string; c: string; bg: string }> = {
