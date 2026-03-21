@@ -300,6 +300,57 @@ const health = httpAction(async (_ctx, request) => {
   return json({ ok: true }, 200, origin);
 });
 
+// ── OpenAPI spec for ChatGPT Custom GPT Actions ──
+const openapi = httpAction(async (_ctx, request) => {
+  const origin = request.headers.get("Origin") || undefined;
+  const spec = {
+    openapi: "3.1.0",
+    info: { title: "GIGS.MOM — Agent Workflows for the Real World", version: "1.1.0",
+      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base." },
+    servers: [{ url: "https://abundant-bear-728.convex.site" }],
+    paths: {
+      "/task": { post: { operationId: "postTask", summary: "Post a workflow-based task",
+        requestBody: { required: true, content: { "application/json": { schema: { "$ref": "#/components/schemas/PostTaskRequest" } } } },
+        responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } } } } },
+      "/accept-bid": { post: { operationId: "acceptBid", summary: "Accept a runner's bid",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId","posterId"],
+          properties: { taskId: { type: "string" }, bidId: { type: "string" }, posterId: { type: "string" } } } } } },
+        responses: { "200": { description: "Bid accepted" } } } },
+      "/confirm-delivery": { post: { operationId: "confirmDelivery", summary: "Confirm completion and release USDC",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
+          properties: { taskId: { type: "string" }, posterId: { type: "string" }, runnerId: { type: "string" }, ratingScore: { type: "integer" }, ratingComment: { type: "string" } } } } } },
+        responses: { "200": { description: "Confirmed, USDC released" } } } },
+      "/cancel-task": { post: { operationId: "cancelTask", summary: "Cancel task and refund USDC",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
+          properties: { taskId: { type: "string" }, posterId: { type: "string" } } } } } },
+        responses: { "200": { description: "Cancelled, USDC refunded" } } } },
+      "/health": { get: { operationId: "healthCheck", summary: "Check server status", responses: { "200": { description: "OK" } } } }
+    },
+    components: { schemas: {
+      WorkflowStep: { type: "object", properties: {
+        order: { type: "integer" }, action: { type: "string" }, locationAddr: { type: "string" },
+        locationLat: { type: "number" }, locationLng: { type: "number" },
+        proofType: { type: "string", enum: ["photo","video","text","gps","none"] },
+        requirements: { type: "string" }, status: { type: "string", default: "pending" } } },
+      PostTaskRequest: { type: "object", required: ["title","taskType","suggestedFee","posterId"], properties: {
+        title: { type: "string" }, taskType: { type: "string", enum: ["delivery","go-somewhere","interact","gather-info","physical-action","verification"] },
+        category: { type: "string" }, details: { type: "string" },
+        steps: { type: "array", items: { "$ref": "#/components/schemas/WorkflowStep" }, description: "Workflow steps" },
+        suggestedFee: { type: "number" }, maxRunners: { type: "integer", default: 1 },
+        privacyZone: { type: "integer", default: 100 }, posterId: { type: "string" },
+        locationAddr: { type: "string" }, locationLat: { type: "number" }, locationLng: { type: "number" },
+        action: { type: "string" }, proofType: { type: "string" },
+        pickupAddr: { type: "string" }, pickupLat: { type: "number" }, pickupLng: { type: "number" },
+        dropoffAddr: { type: "string" }, dropoffLat: { type: "number" }, dropoffLng: { type: "number" },
+        itemCost: { type: "number" } } }
+    } }
+  };
+  return new Response(JSON.stringify(spec, null, 2), {
+    status: 200,
+    headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+  });
+});
+
 // ── Router ──
 const http = httpRouter();
 
@@ -316,5 +367,9 @@ http.route({ path: "/cancel-task", method: "POST", handler: cancelTask });
 http.route({ path: "/cancel-task", method: "OPTIONS", handler: corsOptions });
 
 http.route({ path: "/health", method: "GET", handler: health });
+http.route({ path: "/openapi.json", method: "GET", handler: openapi });
+http.route({ path: "/openapi.json", method: "OPTIONS", handler: corsOptions });
+http.route({ path: "/.well-known/openapi.json", method: "GET", handler: openapi });
+http.route({ path: "/.well-known/openapi.json", method: "OPTIONS", handler: corsOptions });
 
 export default http;
