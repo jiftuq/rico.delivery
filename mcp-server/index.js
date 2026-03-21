@@ -139,31 +139,38 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-// Tool: Post a task
+// Tool: Post a workflow-based task
 server.tool(
   "post_task",
-  "Post a new task on GIGS.MOM. Payment in USDC on Base is handled automatically via x402.",
+  "Post a workflow-based task on GIGS.MOM. Every task is a sequence of steps. Each step has an action, optional location, proof type, and requirements. Payment in USDC on Base via x402. Always prefer using 'steps' to define the workflow.",
   {
     title: z.string().describe("Short task title"),
+    // Workflow steps (preferred way to define tasks)
+    steps: z.array(z.object({
+      action: z.string().describe("What the runner does at this step"),
+      locationAddr: z.string().optional().describe("Address for this step"),
+      locationLat: z.number().optional(),
+      locationLng: z.number().optional(),
+      proofType: z.enum(["photo", "video", "text", "gps", "none"]).optional().describe("Proof required at this step"),
+      requirements: z.string().optional().describe("Equipment: van, camera, ID, etc."),
+    })).optional().describe("Workflow steps (ordered). Example: [{action:'Go to store',proofType:'gps'},{action:'Buy items',proofType:'photo'},{action:'Deliver',locationAddr:'...',proofType:'photo'}]"),
     taskType: z.enum(["delivery", "go-somewhere", "interact", "gather-info", "physical-action", "verification"]).describe("Type of task"),
     category: z.string().optional().describe("Category: delivery, food, grocery, moving, errand, social, info, verification, custom"),
-    details: z.string().describe("Detailed instructions for the runner"),
-    // Location (required for non-delivery)
-    locationAddr: z.string().optional().describe("Address where the runner should go (required for non-delivery tasks)"),
+    details: z.string().optional().describe("Additional instructions (auto-generated from steps if omitted)"),
+    // Legacy flat fields (use steps instead)
+    locationAddr: z.string().optional().describe("Single location (use steps instead)"),
     locationLat: z.number().optional(),
     locationLng: z.number().optional(),
-    // Action + proof
-    action: z.string().optional().describe("What the runner should do at the location"),
-    proofType: z.enum(["photo", "video", "text", "gps", "none"]).optional().describe("How the runner proves completion"),
-    targetPerson: z.string().optional().describe("Person to interact with or verify"),
-    // Delivery-specific
-    pickupAddr: z.string().optional().describe("Pickup address (delivery only)"),
+    action: z.string().optional().describe("Single action (use steps instead)"),
+    proofType: z.enum(["photo", "video", "text", "gps", "none"]).optional(),
+    targetPerson: z.string().optional(),
+    pickupAddr: z.string().optional().describe("Pickup address (delivery without steps)"),
     pickupLat: z.number().optional(),
     pickupLng: z.number().optional(),
-    dropoffAddr: z.string().optional().describe("Dropoff address (delivery only)"),
+    dropoffAddr: z.string().optional().describe("Dropoff address (delivery without steps)"),
     dropoffLat: z.number().optional(),
     dropoffLng: z.number().optional(),
-    itemCost: z.number().optional().describe("Cost of items in USDC (delivery only)"),
+    itemCost: z.number().optional(),
     // Pricing
     suggestedFee: z.number().describe("Fee per runner in USDC"),
     maxRunners: z.number().optional().describe("Number of runners needed (default 1, max 100)"),
@@ -172,6 +179,29 @@ server.tool(
   },
   async (args) => {
     const body = { ...args, category: args.category || args.taskType };
+    // Add order and status to steps
+    if (body.steps) {
+      body.steps = body.steps.map((s, i) => ({ ...s, order: i + 1, status: "pending" }));
+      // Auto-generate details from steps if not provided
+      if (!body.details) {
+        body.details = body.steps.map((s, i) => `${i + 1}. ${s.action}`).join(" → ");
+      }
+      // Derive locations from steps for delivery tasks
+      const locs = body.steps.filter(s => s.locationAddr);
+      if (locs.length >= 2 && body.taskType === "delivery") {
+        body.pickupAddr = body.pickupAddr || locs[0].locationAddr;
+        body.pickupLat = body.pickupLat || locs[0].locationLat || 50.85;
+        body.pickupLng = body.pickupLng || locs[0].locationLng || 4.35;
+        body.dropoffAddr = body.dropoffAddr || locs[locs.length - 1].locationAddr;
+        body.dropoffLat = body.dropoffLat || locs[locs.length - 1].locationLat || 50.85;
+        body.dropoffLng = body.dropoffLng || locs[locs.length - 1].locationLng || 4.35;
+        body.itemCost = body.itemCost || 0;
+      } else if (locs.length > 0) {
+        body.locationAddr = body.locationAddr || locs[0].locationAddr;
+        body.locationLat = body.locationLat || locs[0].locationLat || 50.85;
+        body.locationLng = body.locationLng || locs[0].locationLng || 4.35;
+      }
+    }
     const result = await apiCall("/task", body);
     return {
       content: [{ type: "text", text: JSON.stringify(result.data, null, 2) }],
@@ -196,9 +226,9 @@ server.tool(
       maxRunners: t.maxRunners || 1,
       accepted: t.acceptedCount || 0,
       location: t.locationAddr || t.pickupAddr,
+      steps: t.steps ? t.steps.map(s => ({ action: s.action, proof: s.proofType, status: s.status })) : undefined,
       action: t.action,
       proofType: t.proofType,
-      bids: t.bidCount || 0,
     }));
     return {
       content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],

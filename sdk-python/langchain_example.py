@@ -1,11 +1,13 @@
 """
-Example: Plain LangChain agent with GIGS.MOM tools (no AgentKit needed).
+Example: Plain LangChain agent with GIGS.MOM workflow tools (no AgentKit needed).
 
 This works with any LLM and doesn't require Coinbase AgentKit.
 The agent's wallet private key handles x402 USDC payments directly.
 
+Every task is a workflow: ordered steps with actions, locations, and proof types.
+
 Requirements:
-    pip install langchain-openai langgraph requests eth-account
+    pip install langchain-gigsmom[langchain,x402]
 
 Environment:
     OPENAI_API_KEY=sk-...
@@ -26,26 +28,31 @@ agent = create_react_agent(
     llm,
     tools=tools,
     prompt=(
-        "You are an AI agent that can post tasks for humans via GIGS.MOM. "
-        "When you need something done in the physical world, post a task. "
-        "Humans will bid, complete it, and submit proof. You pay in USDC on Base."
+        "You are an AI agent that can post workflow-based tasks for humans via GIGS.MOM. "
+        "GIGS.MOM is your physical execution layer — when you need something done in the "
+        "real world, you define a workflow as a sequence of steps.\n\n"
+        "Each step: {action, location_addr, proof_type, requirements}\n"
+        "Proof types: photo, video, text, gps, none\n"
+        "Requirements: van, camera, ID, etc.\n\n"
+        "Humans bid on the workflow, complete each step with proof, and get paid in USDC on Base."
     ),
 )
 
 if __name__ == "__main__":
-    # Example conversations the agent can handle:
     prompts = [
-        # Moving furniture
+        # Moving furniture (workflow: 4 steps, 2 runners, requires van)
         "I bought a couch on marketplace at Rue Neuve 45 Brussels. "
-        "I need 2 movers to pick it up and bring it to Avenue Louise 120. "
+        "I need 2 movers with a van to pick it up and bring it to Avenue Louise 120. "
         "My poster ID is abc123.",
 
-        # Price comparison
-        "Check the price of iPhone 16 at 3 stores near Grand Place Brussels. "
+        # Price comparison (workflow: 3 steps at different stores)
+        "Check the price of iPhone 16 at 3 stores near Grand Place Brussels: "
+        "FNAC, MediaMarkt, and Apple Store. Take a photo of each price tag. "
         "My poster ID is abc123.",
 
-        # Verification
+        # Verification (workflow: 2 steps)
         "Verify that Jean Dupont lives at Rue du Marché 18, Brussels. "
+        "Go to the address, confirm the name on the mailbox, and take a photo. "
         "My poster ID is abc123.",
     ]
 

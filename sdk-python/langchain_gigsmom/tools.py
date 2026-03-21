@@ -1,7 +1,7 @@
 """Individual LangChain tools for GIGS.MOM agentic commerce protocol."""
 
 import json
-from typing import Optional, Type
+from typing import Optional, List, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -9,25 +9,54 @@ from pydantic import BaseModel, Field
 
 # ── Input Schemas ──
 
+class WorkflowStep(BaseModel):
+    """A single step in a GIGS.MOM workflow."""
+    action: str = Field(description="What the runner should do at this step")
+    location_addr: Optional[str] = Field(default=None, description="Address for this step")
+    location_lat: Optional[float] = Field(default=None, description="Latitude")
+    location_lng: Optional[float] = Field(default=None, description="Longitude")
+    proof_type: Optional[str] = Field(default=None, description="Proof required: photo, video, text, gps, none")
+    requirements: Optional[str] = Field(default=None, description="Equipment needed: van, camera, ID, etc.")
+
+
 class PostTaskInput(BaseModel):
-    """Input for posting a task on GIGS.MOM."""
+    """Input for posting a workflow-based task on GIGS.MOM.
+
+    Tasks are workflows: ordered sequences of steps. Each step has an action,
+    optional location, proof type, and requirements. The runner completes them in order.
+
+    Example steps for a food delivery:
+        [{"action": "Go to restaurant", "location_addr": "123 Main St", "proof_type": "gps"},
+         {"action": "Pick up order #412", "proof_type": "photo"},
+         {"action": "Deliver to customer", "location_addr": "456 Oak Ave", "proof_type": "photo"}]
+
+    Example steps for moving:
+        [{"action": "Come to my apartment", "location_addr": "...", "requirements": "van"},
+         {"action": "Load furniture", "proof_type": "photo"},
+         {"action": "Drive to new place", "location_addr": "..."},
+         {"action": "Unload furniture", "proof_type": "photo"}]
+    """
     title: str = Field(description="Short task title")
+    steps: Optional[List[WorkflowStep]] = Field(
+        default=None,
+        description="Workflow steps (preferred). Each step: action, location, proof_type, requirements."
+    )
     task_type: str = Field(
         default="gather-info",
         description="Task type: delivery, go-somewhere, interact, gather-info, physical-action, verification",
     )
     category: Optional[str] = Field(default=None, description="Category: delivery, food, grocery, moving, errand, social, info, verification, custom")
-    location_addr: Optional[str] = Field(default=None, description="Address where the runner should go (required for non-delivery tasks)")
-    location_lat: Optional[float] = Field(default=None, description="Latitude of the location")
-    location_lng: Optional[float] = Field(default=None, description="Longitude of the location")
-    action: Optional[str] = Field(default=None, description="What the runner should do at the location")
-    proof_type: str = Field(default="photo", description="How the runner proves completion: photo, video, text, gps, none")
+    # Legacy flat fields (use steps instead when possible)
+    location_addr: Optional[str] = Field(default=None, description="Single location address (use steps instead for multi-step)")
+    location_lat: Optional[float] = Field(default=None)
+    location_lng: Optional[float] = Field(default=None)
+    action: Optional[str] = Field(default=None, description="Single action (use steps instead)")
+    proof_type: str = Field(default="photo", description="Default proof type: photo, video, text, gps, none")
     target_person: Optional[str] = Field(default=None, description="Person to interact with or verify")
-    # Delivery-specific
-    pickup_addr: Optional[str] = Field(default=None, description="Pickup address (delivery tasks only)")
+    pickup_addr: Optional[str] = Field(default=None, description="Pickup address (delivery without steps)")
     pickup_lat: Optional[float] = Field(default=None)
     pickup_lng: Optional[float] = Field(default=None)
-    dropoff_addr: Optional[str] = Field(default=None, description="Dropoff address (delivery tasks only)")
+    dropoff_addr: Optional[str] = Field(default=None, description="Dropoff address (delivery without steps)")
     dropoff_lat: Optional[float] = Field(default=None)
     dropoff_lng: Optional[float] = Field(default=None)
     item_cost: Optional[float] = Field(default=None, description="Cost of items in USDC (delivery only)")
@@ -67,7 +96,10 @@ class CancelTaskInput(BaseModel):
 # ── Tools ──
 
 class PostTaskTool(BaseTool):
-    """Post a task on GIGS.MOM for humans to complete in the physical world.
+    """Post a workflow-based task on GIGS.MOM for humans to complete in the physical world.
+
+    Every task is a workflow: an ordered sequence of steps. Each step has an action,
+    optional location, proof requirement, and equipment requirements.
 
     Use this when you need something done in the real world that an AI cannot do:
     - Deliver items or move furniture (delivery / moving)
@@ -80,11 +112,13 @@ class PostTaskTool(BaseTool):
     - Count cars, people, or events (gather-info + text)
 
     Payment is in USDC on Base. The fee is escrowed automatically via x402.
+    Always prefer using 'steps' to define the workflow rather than flat fields.
     """
 
     name: str = "gigsmom_post_task"
     description: str = (
-        "Post a task on GIGS.MOM for humans to complete in the physical world. "
+        "Post a workflow-based task on GIGS.MOM for humans to complete in the physical world. "
+        "Define the task as a sequence of steps (action, location, proof_type, requirements). "
         "Handles delivery, moving, info gathering, verification, physical actions, and more. "
         "Payment in USDC on Base, escrowed via x402 protocol."
     )
@@ -92,6 +126,12 @@ class PostTaskTool(BaseTool):
     client: object = None  # GigsMom instance
 
     def _run(self, **kwargs) -> str:
+        # Convert Pydantic WorkflowStep models to dicts
+        if kwargs.get("steps"):
+            kwargs["steps"] = [
+                s.model_dump(exclude_none=True) if hasattr(s, "model_dump") else s
+                for s in kwargs["steps"]
+            ]
         result = self.client.post_task(**kwargs)
         return json.dumps(result, indent=2)
 

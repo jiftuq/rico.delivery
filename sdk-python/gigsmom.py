@@ -159,6 +159,7 @@ class GigsMom:
         task_type="gather-info",
         category=None,
         details=None,
+        steps=None,
         location_addr=None,
         location_lat=None,
         location_lng=None,
@@ -177,19 +178,81 @@ class GigsMom:
         privacy_zone=100,
         poster_id=None,
     ):
-        """Post a task on GIGS.MOM. Returns task ID on success."""
+        """Post a task on GIGS.MOM. Returns task ID on success.
+
+        Tasks are workflow-based: pass a list of steps, each with an action,
+        optional location, and proof type. The runner completes them in order.
+
+        Args:
+            steps: List of workflow steps, each a dict with:
+                - action (str): What to do at this step
+                - location_addr (str, optional): Address for this step
+                - location_lat (float, optional): Latitude
+                - location_lng (float, optional): Longitude
+                - proof_type (str, optional): photo, video, text, gps, none
+                - requirements (str, optional): e.g. "van", "camera", "ID"
+        """
         body = {
             "title": title,
             "taskType": task_type,
             "category": category or task_type,
-            "details": details or action or "No instructions.",
+            "details": details or (
+                " → ".join(s.get("action", "") for s in steps) if steps
+                else action or "No instructions."
+            ),
             "suggestedFee": suggested_fee,
             "maxRunners": max_runners,
             "privacyZone": privacy_zone,
             "posterId": poster_id,
         }
 
-        if task_type == "delivery":
+        # Workflow steps (preferred)
+        if steps:
+            body["steps"] = [
+                {
+                    "order": i + 1,
+                    "action": s.get("action", ""),
+                    "status": "pending",
+                    **({k: s[k] for k in (
+                        "locationAddr", "locationLat", "locationLng",
+                        "proofType", "requirements",
+                    ) if k in s}),
+                    # Also accept snake_case keys
+                    **({
+                        "locationAddr": s["location_addr"],
+                    } if "location_addr" in s else {}),
+                    **({
+                        "locationLat": s["location_lat"],
+                    } if "location_lat" in s else {}),
+                    **({
+                        "locationLng": s["location_lng"],
+                    } if "location_lng" in s else {}),
+                    **({
+                        "proofType": s["proof_type"],
+                    } if "proof_type" in s else {}),
+                }
+                for i, s in enumerate(steps)
+            ]
+            # Derive pickup/dropoff from first/last step with location
+            locs = [s for s in body["steps"] if s.get("locationAddr")]
+            if len(locs) >= 2 and task_type == "delivery":
+                body["pickupAddr"] = locs[0]["locationAddr"]
+                body["pickupLat"] = locs[0].get("locationLat", 50.85)
+                body["pickupLng"] = locs[0].get("locationLng", 4.35)
+                body["dropoffAddr"] = locs[-1]["locationAddr"]
+                body["dropoffLat"] = locs[-1].get("locationLat", 50.85)
+                body["dropoffLng"] = locs[-1].get("locationLng", 4.35)
+                body["itemCost"] = item_cost or 0
+            elif locs:
+                body["locationAddr"] = locs[0]["locationAddr"]
+                body["locationLat"] = locs[0].get("locationLat", 50.85)
+                body["locationLng"] = locs[0].get("locationLng", 4.35)
+                body["action"] = " → ".join(s.get("action", "") for s in body["steps"])
+                body["proofType"] = next(
+                    (s.get("proofType") for s in body["steps"] if s.get("proofType") and s["proofType"] != "none"),
+                    "photo"
+                )
+        elif task_type == "delivery":
             body.update({
                 "pickupAddr": pickup_addr,
                 "pickupLat": pickup_lat,
