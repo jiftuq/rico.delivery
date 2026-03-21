@@ -13,6 +13,7 @@ function corsHeaders(origin?: string) {
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Payment",
     "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Expose-Headers": "X-Payment-Required",
   };
 }
 
