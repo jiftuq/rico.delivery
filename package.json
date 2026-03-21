@@ -9,8 +9,7 @@
     "dev:backend": "convex dev",
     "dev:server": "tsx server/index.ts",
     "build": "vite build",
-    "postinstall": "cd convex && npm install",
-    "deploy": "cd convex && npm install && cd .. && convex deploy && vite build",
+    "deploy": "convex deploy && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
