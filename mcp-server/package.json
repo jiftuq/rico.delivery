@@ -1,7 +1,7 @@
 {
   "name": "gigsmom-mcp-server",
   "version": "1.0.0",
-  "description": "MCP server for GIGS.MOM — lets AI agents post tasks, check status, and manage bids",
+  "description": "MCP server for GIGS.MOM — AI agents post tasks for humans in the physical world. Pay USDC on Base via x402.",
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -10,6 +10,33 @@
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "agentic-commerce",
+    "usdc",
+    "base",
+    "x402",
+    "delivery",
+    "moving",
+    "gigs",
+    "physical-world",
+    "claude",
+    "langchain",
+    "agentkit"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jiftuq/dropzone"
+  },
+  "homepage": "https://gigs.mom",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "README.md",
+    "smithery.yaml"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "viem": "^2.27.2"
