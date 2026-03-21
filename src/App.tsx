@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
 import { Id } from "../convex/_generated/dataModel";
 import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions } from "./hooks/useDropZone";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
@@ -134,21 +134,43 @@ function TaskMap({pickup,dropoff,privacyZone,courierLat,courierLng,bids,userLoc,
 
 function ChatPanel({taskId,userId,myRole}:{taskId:Id<"tasks">;userId:Id<"users">;myRole:string}){
   const t=useLang();const{messages,send}=useChat(taskId);const[msg,setMsg]=useState("");const endRef=useRef<HTMLDivElement>(null);
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[messages.length]);
+  const proofFiles=useProofFiles(taskId);const[viewMedia,setViewMedia]=useState<{url:string;type:string}|null>(null);
+  // Merge messages and proofs into a single timeline
+  const timeline=useMemo(()=>{
+    const items:(({kind:"msg"}&any)|({kind:"proof"}&any))[]=[];
+    messages.forEach(m=>items.push({kind:"msg",...m}));
+    proofFiles.forEach(p=>items.push({kind:"proof",...p}));
+    items.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    return items;
+  },[messages,proofFiles]);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[timeline.length]);
   const doSend=()=>{if(!msg.trim())return;send(userId,msg.trim());setMsg("")};
   return <div style={{borderRadius:12,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
     <div style={{padding:"10px 14px",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.03)",fontSize:13,fontWeight:600,color:"#fff"}}>💬 {t("chat")}</div>
-    <div style={{maxHeight:280,overflowY:"auto",padding:"10px 14px",WebkitOverflowScrolling:"touch"}}>
-      {messages.length===0&&<div style={S.empty}>{t("no_messages")}</div>}
-      {messages.map((m,i)=><div key={i} style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,marginBottom:6,...(m.role===myRole?{background:"rgba(0,255,135,0.06)",borderBottomRightRadius:4,marginLeft:"auto"}:{background:"rgba(255,255,255,0.03)",borderBottomLeftRadius:4})}}>
-        <div style={{fontSize:10,fontWeight:600,color:"#666",marginBottom:2}}>{m.senderName}</div>
-        <div style={{fontSize:13,color:"#ddd",lineHeight:1.5}}>{m.text}</div></div>)}
+    <div style={{maxHeight:340,overflowY:"auto",padding:"10px 14px",WebkitOverflowScrolling:"touch"}}>
+      {timeline.length===0&&<div style={S.empty}>{t("no_messages")}</div>}
+      {timeline.map((item,i)=>item.kind==="msg"?<div key={"m"+i} style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,marginBottom:6,...(item.role===myRole?{background:"rgba(0,255,135,0.06)",borderBottomRightRadius:4,marginLeft:"auto"}:{background:"rgba(255,255,255,0.03)",borderBottomLeftRadius:4})}}>
+        <div style={{fontSize:10,fontWeight:600,color:"#666",marginBottom:2}}>{item.senderName}</div>
+        <div style={{fontSize:13,color:"#ddd",lineHeight:1.5}}>{item.text}</div></div>
+      :<div key={"p"+i} style={{maxWidth:"85%",padding:8,borderRadius:14,marginBottom:6,background:"rgba(168,85,247,0.08)",border:"1px solid rgba(168,85,247,0.15)",borderBottomLeftRadius:4}}>
+        <div style={{fontSize:10,fontWeight:600,color:"#a855f7",marginBottom:4}}>📸 Proof{item.stepOrder!=null?` · Step ${item.stepOrder+1}`:""}</div>
+        {item.fileType?.startsWith("image")?<img src={item.url} style={{width:"100%",maxWidth:240,borderRadius:8,cursor:"pointer"}} alt={item.caption||"proof"} onClick={()=>setViewMedia({url:item.url,type:"image"})}/>
+        :item.fileType?.startsWith("video")?<video src={item.url} style={{width:"100%",maxWidth:240,borderRadius:8}} controls playsInline onClick={()=>setViewMedia({url:item.url,type:"video"})}/>
+        :<div style={{fontSize:11,color:"#a855f7"}}>📄 {item.fileName}</div>}
+        {item.caption&&<div style={{fontSize:11,color:"#999",marginTop:4}}>{item.caption}</div>}
+      </div>)}
       <div ref={endRef}/>
     </div>
     <div style={{display:"flex",gap:8,padding:"10px 12px",background:"rgba(255,255,255,0.015)",borderTop:"1px solid rgba(255,255,255,0.03)"}}>
       <input style={{...S.fInp,flex:1,fontSize:14,padding:"12px 14px"}} placeholder={t("message_ph")} value={msg} onChange={e=>setMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSend()}/>
       <button style={{width:44,height:44,borderRadius:10,border:"none",background:"#00ff87",color:"#000",fontSize:18,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} onClick={doSend}>↑</button>
-    </div></div>;
+    </div>
+    {viewMedia&&<div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.9)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setViewMedia(null)}>
+      {viewMedia.type==="image"?<img src={viewMedia.url} style={{maxWidth:"95%",maxHeight:"90vh",borderRadius:12}} alt="proof"/>
+      :<video src={viewMedia.url} style={{maxWidth:"95%",maxHeight:"90vh",borderRadius:12}} controls autoPlay playsInline/>}
+      <button style={{position:"absolute",top:20,right:20,background:"rgba(255,255,255,0.1)",border:"none",color:"#fff",fontSize:24,width:44,height:44,borderRadius:22,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setViewMedia(null)}>✕</button>
+    </div>}
+  </div>;
 }
 
 function RatingModal({name,onRate,onClose}:{name:string;onRate:(s:number,c:string)=>void;onClose:()=>void}){
@@ -205,8 +227,11 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const[routeKm,setRouteKm]=useState<string|null>(null);const[proofText,setProofText]=useState("");const[uploading,setUploading]=useState(false);
   const profile=useProfile(profileId);const st=STS[task.status]||STS.open;
   const proofFiles=useProofFiles(task._id);const{upload:uploadProof}=useProofUpload();
-  const fileBackRef=useRef<HTMLInputElement>(null);
-  const fileFrontRef=useRef<HTMLInputElement>(null);
+  const filePhotoBackRef=useRef<HTMLInputElement>(null);
+  const filePhotoFrontRef=useRef<HTMLInputElement>(null);
+  const fileVideoBackRef=useRef<HTMLInputElement>(null);
+  const fileVideoFrontRef=useRef<HTMLInputElement>(null);
+  const[showProofMenu,setShowProofMenu]=useState(false);
   const isDel=!task.taskType||task.taskType==="delivery";
   const maxR=task.maxRunners||1;const multi=maxR>1;
   const taskRunners=useTaskRunners(multi?task._id:null);
@@ -225,7 +250,16 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doCancel=async()=>{if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}};
   const doSubmitProof=()=>{if(!isCourier||!userId)return;actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
-  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;setUploading(true);try{await uploadProof(file,task._id,userId)}catch(err:any){alert(err.message)}finally{setUploading(false);if(fileBackRef.current)fileBackRef.current.value="";if(fileFrontRef.current)fileFrontRef.current.value=""}};
+  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;setUploading(true);try{await uploadProof(file,task._id,userId)}catch(err:any){alert(err.message)}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
+  const ProofMenu=({btnStyle}:{btnStyle:any})=><div style={{position:"relative",display:"inline-block"}}>
+    <button style={btnStyle} onClick={(e)=>{e.stopPropagation();setShowProofMenu(!showProofMenu)}}>{uploading?"⏳":"📎 Proof"}</button>
+    {showProofMenu&&<div style={{position:"absolute",bottom:"110%",left:0,zIndex:999,background:"#1a1a2e",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:6,display:"flex",flexDirection:"column",gap:4,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}} onClick={e=>e.stopPropagation()}>
+      <button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",textAlign:"left",minHeight:0}} onClick={()=>filePhotoBackRef.current?.click()}>📷 Photo (back cam)</button>
+      <button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",textAlign:"left",minHeight:0}} onClick={()=>filePhotoFrontRef.current?.click()}>🤳 Photo (selfie)</button>
+      <button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",textAlign:"left",minHeight:0}} onClick={()=>fileVideoBackRef.current?.click()}>🎥 Video (back cam)</button>
+      <button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",textAlign:"left",minHeight:0}} onClick={()=>fileVideoFrontRef.current?.click()}>🤳🎬 Video (selfie)</button>
+    </div>}
+  </div>;
 
   return <div style={{...S.card,borderLeft:`3px solid ${st.c}`}} onClick={()=>setOpen(!open)}>
     <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start"}}>
@@ -318,10 +352,11 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>
           :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
-            <input ref={fileBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
-            <input ref={fileFrontRef} type="file" accept="image/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
-            <button style={{...S.bidAccBtn,minHeight:40,fontSize:11}} onClick={()=>fileBackRef.current?.click()} title="Back camera">{uploading?"⏳":"📷"}</button>
-            <button style={{...S.bidAccBtn,minHeight:40,fontSize:11}} onClick={()=>fileFrontRef.current?.click()} title="Selfie camera">{uploading?"⏳":"🤳"}</button>
+            <input ref={filePhotoBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
+            <input ref={filePhotoFrontRef} type="file" accept="image/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
+            <input ref={fileVideoBackRef} type="file" accept="video/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
+            <input ref={fileVideoFrontRef} type="file" accept="video/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
+            <ProofMenu btnStyle={{...S.bidAccBtn,minHeight:40,fontSize:11}}/>
             <button style={{...S.bidAccBtn,minHeight:40}} onClick={doSubmitProof}>✅ {t("submit_proof")}</button>
           </div>)}
         </div>}
@@ -335,8 +370,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
             {/* Runner can submit proof */}
             {userId===tr.runnerId&&tr.status==="accepted"&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
               {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:11,padding:"6px 8px",width:80}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
-              <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>fileBackRef.current?.click()} title="Back camera">📷</button>
-              <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>fileFrontRef.current?.click()} title="Selfie">🤳</button>
+              <ProofMenu btnStyle={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}}/>
               <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={doSubmitProof}>✅</button>
             </div>}
             {/* Poster can confirm delivered runners */}
