@@ -74,7 +74,32 @@ export const verifyX402 = internalAction({
   },
 });
 
-// ── Auto-refund stuck tasks (called by cron) ──
+// ── Auto-release delivered tasks to courier (2h timeout) ──
+export const processAutoRelease = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const expired: any[] = await ctx.runQuery(api.tasks.getDeliveredExpired, {});
+    for (const task of expired) {
+      console.log(`Auto-releasing task ${task._id} to courier ($${task.totalEscrowed})`);
+      try {
+        const result: any = await ctx.runMutation(api.tasks.autoReleaseToCourier, { taskId: task._id });
+        if (result && result.courierId) {
+          const courier: any = await ctx.runQuery(api.users.get, { userId: result.courierId });
+          if (courier?.walletAddress && result.payout > 0) {
+            await ctx.runAction(internal.payments.sendUSDC, {
+              to: courier.walletAddress,
+              amountUSDC: result.payout,
+            });
+          }
+        }
+      } catch (e: any) {
+        console.error(`Auto-release failed for ${task._id}:`, e.message);
+      }
+    }
+  },
+});
+
+// ── Auto-refund stuck in_progress tasks (4h timeout) ──
 export const processRefunds = internalAction({
   args: {},
   handler: async (ctx) => {

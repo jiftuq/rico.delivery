@@ -241,7 +241,7 @@ app.post("/confirm-delivery", async (req: Request, res: Response) => {
   if (!courier) return res.status(400).json({ error: "Courier not found" });
 
   // Calculate payout
-  const FEE_RATE = 0.01;
+  const FEE_RATE = 0.07;
   const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
   const payout = task.totalEscrowed - burn;
 

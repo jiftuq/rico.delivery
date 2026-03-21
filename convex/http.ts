@@ -1,4 +1,3 @@
-"use node";
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
@@ -35,7 +34,7 @@ function buildRequirements(totalUSDC: number, resource: string, description: str
     payTo: RECEIVING_WALLET,
     maxTimeoutSeconds: 300,
     asset: USDC_ADDRESS,
-    extra: { name: "DROPZONE", version: "1" },
+    extra: { name: "GIGS.MOM", version: "1" },
   };
 }
 
@@ -63,7 +62,7 @@ const postTask = httpAction(async (ctx, request) => {
   const totalUSDC = Math.max(itemCost + suggestedFee, 0.01);
 
   const resource = new URL("/task", request.url).toString();
-  const requirements = buildRequirements(totalUSDC, resource, `DROPZONE task: $${totalUSDC.toFixed(2)} USDC`);
+  const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`);
 
   const paymentHeader = request.headers.get("X-Payment");
   if (!paymentHeader) return send402(requirements, origin);
@@ -110,7 +109,7 @@ const acceptBid = httpAction(async (ctx, request) => {
   // Courier bid higher → poster pays the difference via x402
   if (diff > 0.001) {
     const resource = new URL("/accept-bid", request.url).toString();
-    const requirements = buildRequirements(diff, resource, `DROPZONE extra fee: $${diff.toFixed(2)} USDC`);
+    const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`);
     const paymentHeader = request.headers.get("X-Payment");
     if (!paymentHeader) return send402(requirements, origin);
     const result: any = await ctx.runAction(internal.payments.verifyX402, {
@@ -183,7 +182,7 @@ const confirmDelivery = httpAction(async (ctx, request) => {
   }
   if (!courier) return json({ error: "Courier not found" }, 400, origin);
 
-  const FEE_RATE = 0.01;
+  const FEE_RATE = 0.07;
   const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
   const payout = task.totalEscrowed - burn;
 
@@ -200,7 +199,7 @@ const confirmDelivery = httpAction(async (ctx, request) => {
   }
 
   // 2. Send USDC payout to courier on-chain
-  let txHash: string | undefined;
+  let txHash: string | null | undefined;
   try {
     txHash = await ctx.runAction(internal.payments.sendUSDC, {
       to: courier.walletAddress,
@@ -242,7 +241,7 @@ const cancelTask = httpAction(async (ctx, request) => {
     return json({ error: e.message }, 400, origin);
   }
 
-  let txHash: string | undefined;
+  let txHash: string | null | undefined;
   try {
     if (task?.totalEscrowed > 0) {
       txHash = await ctx.runAction(internal.payments.sendUSDC, {

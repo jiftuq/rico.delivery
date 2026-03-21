@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-const FEE_RATE = 0.01;
+const FEE_RATE = 0.07;
 
 export const create = mutation({
   args: {
@@ -93,10 +93,10 @@ export const markDelivered = mutation({
   handler: async (ctx, { taskId, courierId }) => {
     const task = await ctx.db.get(taskId);
     if (!task || task.status !== "in_progress" || task.courierId !== courierId) throw new Error("Cannot mark");
-    await ctx.db.patch(taskId, { status: "delivered" });
+    await ctx.db.patch(taskId, { status: "delivered", deliveredAt: Date.now() });
     await ctx.db.insert("messages", {
       taskId, senderId: courierId, senderName: "System", role: "system",
-      text: "Marked as delivered. Waiting for confirmation.", createdAt: Date.now(),
+      text: "Marked as delivered. Waiting for confirmation. Auto-releases to courier in 2 hours.", createdAt: Date.now(),
     });
   },
 });
@@ -159,6 +159,74 @@ export const refundTask = mutation({
   },
 });
 
+// ── Dispute ──
+export const openDispute = mutation({
+  args: { taskId: v.id("tasks"), userId: v.id("users"), reason: v.string() },
+  handler: async (ctx, { taskId, userId, reason }) => {
+    const task = await ctx.db.get(taskId);
+    if (!task) throw new Error("Task not found");
+    if (task.status !== "in_progress" && task.status !== "delivered") throw new Error("Cannot dispute");
+    if (task.posterId !== userId && task.courierId !== userId) throw new Error("Unauthorized");
+    const role = task.posterId === userId ? "poster" : "courier";
+    await ctx.db.patch(taskId, { status: "disputed", disputeReason: reason, disputeBy: role, disputedAt: Date.now() });
+    const user = await ctx.db.get(userId);
+    await ctx.db.insert("messages", {
+      taskId, senderId: userId, senderName: "System", role: "system",
+      text: `⚠️ Dispute opened by ${role} (${user?.displayName}): "${reason}". Funds are held until resolved.`, createdAt: Date.now(),
+    });
+  },
+});
+
+export const resolveDispute = mutation({
+  args: { taskId: v.id("tasks"), resolution: v.string() },
+  handler: async (ctx, { taskId, resolution }) => {
+    const task = await ctx.db.get(taskId);
+    if (!task || task.status !== "disputed") throw new Error("Not disputed");
+    if (resolution === "courier") {
+      // Pay courier
+      const courier = task.courierId ? await ctx.db.get(task.courierId) : null;
+      if (courier) await ctx.db.patch(task.courierId!, { deliveries: courier.deliveries + 1 });
+      await ctx.db.patch(taskId, { status: "completed", completedAt: Date.now() });
+      return { payTo: "courier", courierId: task.courierId, amount: task.totalEscrowed };
+    } else {
+      // Refund poster
+      await ctx.db.patch(taskId, { status: "refunded" });
+      return { payTo: "poster", posterId: task.posterId, amount: task.totalEscrowed };
+    }
+  },
+});
+
+// ── Auto-release: pay courier if delivered > 2 hours without confirmation ──
+export const getDeliveredExpired = query({
+  args: {},
+  handler: async (ctx) => {
+    const twoHours = 2 * 60 * 60 * 1000;
+    const now = Date.now();
+    const tasks = await ctx.db.query("tasks").withIndex("by_status", q => q.eq("status", "delivered")).collect();
+    return tasks.filter(t => t.deliveredAt && now - t.deliveredAt > twoHours);
+  },
+});
+
+export const autoReleaseToCourier = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }) => {
+    const task = await ctx.db.get(taskId);
+    if (!task || task.status !== "delivered" || !task.courierId) return null;
+    const courier = await ctx.db.get(task.courierId);
+    if (!courier) return null;
+    const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
+    const payout = task.totalEscrowed - burn;
+    await ctx.db.patch(task.courierId, { deliveries: courier.deliveries + 1 });
+    await ctx.db.patch(taskId, { status: "completed", completedAt: Date.now() });
+    await ctx.db.insert("messages", {
+      taskId, senderId: task.courierId, senderName: "System", role: "system",
+      text: `Auto-released! $${payout.toFixed(2)} USDC paid to courier (poster did not confirm within 2 hours).`, createdAt: Date.now(),
+    });
+    return { payout, burn, courierId: task.courierId };
+  },
+});
+
+// ── Stuck in_progress tasks (no delivery after 4 hours) → refund poster ──
 export const getStuckTasks = query({
   args: {},
   handler: async (ctx) => {
@@ -187,7 +255,7 @@ export const getActive = query({
   handler: async (ctx, { userId }) => {
     const posted = await ctx.db.query("tasks").withIndex("by_poster", q => q.eq("posterId", userId)).order("desc").take(20);
     const delivering = await ctx.db.query("tasks").withIndex("by_courier", q => q.eq("courierId", userId)).order("desc").take(20);
-    const active = [...posted, ...delivering].filter(t => t.status !== "completed" && t.status !== "cancelled" && t.status !== "refunded");
+    const active = [...posted, ...delivering].filter(t => !["completed", "cancelled", "refunded"].includes(t.status));
     return active.sort((a, b) => b.createdAt - a.createdAt);
   },
 });

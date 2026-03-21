@@ -88,6 +88,7 @@ export function useTaskActions() {
     markDelivered: useMutation(api.tasks.markDelivered),
     confirmDelivery: useMutation(api.tasks.confirmDelivery),
     cancelTask: useMutation(api.tasks.cancel),
+    openDispute: useMutation(api.tasks.openDispute),
   };
 }
 

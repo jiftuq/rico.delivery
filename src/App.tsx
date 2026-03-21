@@ -37,6 +37,43 @@ button:active{transform:scale(.97)}
 @media(min-width:900px){.dz-main{padding:0 18px 50px}.dz-header-nav{display:flex;gap:1px}.dz-bottom-nav{display:none}.dz-pricing-desk{display:block}.dz-pricing-mob{display:none}}
 `;
 
+function AddressMapPicker({label,value,lat,lng,onSelect,userLoc}:{label:string;value:string;lat:number;lng:number;onSelect:(addr:string,lat:number,lng:number)=>void;userLoc:[number,number]|null}){
+  const ref=useRef<HTMLDivElement>(null);const mapRef=useRef<L.Map|null>(null);const markerRef=useRef<L.Marker|null>(null);
+  const[q,setQ]=useState("");const[results,setResults]=useState<{display_name:string;lat:string;lon:string}[]>([]);const[searching,setSearching]=useState(false);const[open,setOpen]=useState(false);
+  const center:[number,number]=lat&&lng?[lat,lng]:userLoc||[50.85,4.35];
+  const reverseGeocode=async(lt:number,ln:number)=>{try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lt}&lon=${ln}&zoom=18&addressdetails=1`);const d=await r.json();if(d.display_name)onSelect(d.display_name,lt,ln)}catch(e){onSelect(`${lt.toFixed(5)}, ${ln.toFixed(5)}`,lt,ln)}};
+  const search=async()=>{if(!q.trim())return;setSearching(true);try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`);setResults(await r.json())}catch(e){}setSearching(false)};
+  const pick=(r:{display_name:string;lat:string;lon:string})=>{const lt=parseFloat(r.lat),ln=parseFloat(r.lon);onSelect(r.display_name,lt,ln);setResults([]);setQ("");setOpen(false);if(mapRef.current){mapRef.current.setView([lt,ln],16);if(markerRef.current)markerRef.current.setLatLng([lt,ln])}};
+  useEffect(()=>{if(!open||!ref.current)return;if(mapRef.current){try{mapRef.current.remove()}catch(e){}mapRef.current=null}
+    const t=setTimeout(()=>{if(!ref.current)return;try{
+      const m=L.map(ref.current,{zoomControl:false,attributionControl:false}).setView(center,14);
+      L.tileLayer(TILES,{maxZoom:18}).addTo(m);L.control.zoom({position:"bottomright"}).addTo(m);mapRef.current=m;
+      const mk=L.marker(center,{draggable:true,icon:L.divIcon({className:"",html:`<div style="width:22px;height:22px;border-radius:50%;background:#00ff87;border:3px solid #14151e;box-shadow:0 0 12px rgba(0,255,135,0.5);cursor:grab"></div>`,iconSize:[22,22],iconAnchor:[11,11]})}).addTo(m);
+      markerRef.current=mk;mk.on("dragend",()=>{const p=mk.getLatLng();reverseGeocode(p.lat,p.lng)});
+      m.on("click",(e:any)=>{mk.setLatLng(e.latlng);reverseGeocode(e.latlng.lat,e.latlng.lng)});
+    }catch(e){}},60);
+    return()=>{clearTimeout(t);if(mapRef.current){try{mapRef.current.remove()}catch(e){}mapRef.current=null}}
+  },[open]);
+  useEffect(()=>{if(mapRef.current&&markerRef.current&&lat&&lng){mapRef.current.setView([lat,lng],16);markerRef.current.setLatLng([lat,lng])}},[lat,lng]);
+  return <div>
+    <div style={{display:"flex",gap:6}}>
+      <div style={{flex:1,position:"relative"}}>
+        <input style={{...S.fInp,fontSize:14,padding:12,width:"100%"}} value={open?q:value} placeholder={label} onChange={e=>{setQ(e.target.value);if(!open)setOpen(true)}} onFocus={()=>setOpen(true)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();search()}}}/>
+        {open&&results.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:2000,background:"#14151e",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,overflow:"hidden",maxHeight:180,overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
+          {results.map((r,i)=><button key={i} onClick={()=>pick(r)} style={{display:"block",width:"100%",textAlign:"left",padding:"10px 14px",background:"transparent",border:"none",borderBottom:"1px solid rgba(255,255,255,0.03)",color:"#aaa",fontSize:11,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}} onMouseOver={e=>(e.currentTarget.style.background="rgba(0,255,135,0.05)")} onMouseOut={e=>(e.currentTarget.style.background="transparent")}>{r.display_name}</button>)}
+        </div>}
+      </div>
+      <button style={{...S.gpsBtn,minWidth:48,minHeight:48,fontSize:12}} onClick={()=>{if(open)search();else setOpen(true)}}>{searching?"⏳":"🔍"}</button>
+      <button style={{...S.gpsBtn,minWidth:48,minHeight:48}} onClick={()=>setOpen(!open)}>{open?"▲":"▼"}</button>
+    </div>
+    {value&&!open&&<div style={{fontSize:10,color:"#00ff87",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>✓ {value.slice(0,60)}{value.length>60?"…":""}</div>}
+    {open&&<div style={{marginTop:6}}>
+      <div ref={ref} style={{width:"100%",height:200,borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.05)"}}/>
+      <div style={{fontSize:9,color:"#555",marginTop:4}}>Click or drag marker to set location</div>
+    </div>}
+  </div>;
+}
+
 function TaskMap({pickup,dropoff,privacyZone,courierLat,courierLng,bids,userLoc,showExact,tracking,h=240}:{pickup:{lat:number;lng:number;addr:string};dropoff:{lat:number;lng:number;addr:string};privacyZone:number;courierLat?:number;courierLng?:number;bids?:{name:string;lat:number;lng:number;fee:number;score:number}[];userLoc:[number,number]|null;showExact:boolean;tracking:boolean;h?:number}){
   const ref=useRef<HTMLDivElement>(null);const mapRef=useRef<L.Map|null>(null);
   useEffect(()=>{if(!ref.current)return;if(mapRef.current){try{mapRef.current.remove()}catch(e){}mapRef.current=null}
@@ -194,7 +231,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           {bids.length===0&&<div style={S.empty}>{t("no_bids")}</div>}
           {isOwner&&<div style={{display:"flex",gap:6,marginTop:8}}>
             <button style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,71,87,0.2)",background:"rgba(255,71,87,0.04)",color:"#ff4757",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={doCancel}>✕ {t("cancel_task")} · {t("refund")} ${total.toFixed(2)}</button>
-            <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i} ${task.category} · ${t("pickup_lbl")}: ${task.pickupAddr}\n${t("delivery_lbl")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`DROPZONE: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
+            <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i} ${task.category} · ${t("pickup_lbl")}: ${task.pickupAddr}\n${t("delivery_lbl")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`GIGS.MOM: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
           </div>}
           {!isOwner&&userId&&userLoc&&<div style={{marginTop:10,padding:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12}}>
             <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>{t("place_bid")}</div>
@@ -205,6 +242,9 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
         </div>}
         {task.status==="in_progress"&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>🚴 {task.courierName}</span>{isCourier&&<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>actions.markDelivered({taskId:task._id,courierId:userId!})}>📦 {t("mark_delivered")}</button>}</div>}
         {task.status==="delivered"&&isOwner&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>setShowRating(true)}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
+        {task.status==="delivered"&&isCourier&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for poster to confirm. Auto-releases in 2 hours.</div>}
+        {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{const reason=prompt("Describe the issue:");if(reason&&userId)actions.openDispute({taskId:task._id,userId,reason})}}>⚠️ Open Dispute</button>}
+        {task.status==="disputed"&&<div style={{padding:14,borderRadius:12,background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.2)",marginTop:8}}><div style={{fontSize:13,fontWeight:700,color:"#ffa500",marginBottom:4}}>⚠️ Disputed</div><div style={{fontSize:12,color:"#999"}}>Opened by {task.disputeBy}: "{task.disputeReason}"</div><div style={{fontSize:11,color:"#666",marginTop:4}}>Funds are held until resolved. Contact support.</div></div>}
       </>}
       {profileId&&profile&&<ProfilePopup profile={profile} onClose={()=>setProfileId(null)}/>}
       {showRating&&<RatingModal name={task.courierName||"Courier"} onRate={async(s,c)=>{try{const r=await fetch(`${SERVER_URL}/confirm-delivery`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId,ratingScore:s,ratingComment:c})});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}}} onClose={()=>setShowRating(false)}/>}
@@ -220,6 +260,10 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
   const visible=unique.filter(tk=>{if(tk.status==="completed"||tk.status==="cancelled")return false;return(cat==="all"||tk.category===cat)&&tk.title.toLowerCase().includes(search.toLowerCase())});
   const catLabels:{[k:string]:string}={all:t("all"),food:t("food"),grocery:t("grocery"),errand:t("errand")};
   return <div style={{paddingTop:20}}>
+    <div style={{textAlign:"center",marginBottom:24}}>
+      <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>Anything delivered.</h1>
+      <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>Chat. Track. Rate.</p>
+    </div>
     <h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("live_tasks")}</h2>
     <p style={{fontSize:12,color:"#3a3a4a",marginTop:2}}>{openTasks.length} {t("open_tap")}</p>
     <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12,padding:"0 14px",marginTop:12,marginBottom:10}}><span>🔍</span><input style={{flex:1,background:"none",border:"none",color:"#fff",fontSize:14,padding:"12px 0",fontFamily:"'Outfit',sans-serif"}} placeholder={t("search")} value={search} onChange={e=>setSearch(e.target.value)}/></div>
@@ -233,14 +277,15 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);const{createTask}=useTaskActions();
   const[f,sF]=useState({title:"",pickupAddr:"",dropoffAddr:"",suggestedFee:"",details:"",category:"food",privacyZone:"100"});
   const[items,setItems]=useState([{name:"",cost:""}]);
-  const[gps,setGps]=useState(false);const[ok,setOk]=useState(false);const[dLat,sDLat]=useState(0);const[dLng,sDLng]=useState(0);
+  const[ok,setOk]=useState(false);const[pLat,sPLat]=useState(0);const[pLng,sPLng]=useState(0);const[dLat,sDLat]=useState(0);const[dLng,sDLng]=useState(0);
   const set=(k:string)=>(e:any)=>sF({...f,[k]:e.target.value});
   const setItem=(i:number,k:string,v:string)=>setItems(items.map((it,idx)=>idx===i?{...it,[k]:v}:it));
   const addItem=()=>setItems([...items,{name:"",cost:""}]);
   const removeItem=(i:number)=>setItems(items.filter((_,idx)=>idx!==i));
   const itemCostTotal=items.reduce((s,it)=>s+(parseFloat(it.cost)||0),0);
   const total=itemCostTotal+(parseFloat(f.suggestedFee)||0);
-  const useLoc=()=>{if(userLoc){sDLat(userLoc[0]);sDLng(userLoc[1]);sF({...f,dropoffAddr:`GPS (${userLoc[0].toFixed(4)}, ${userLoc[1].toFixed(4)})`});setGps(true)}};
+  const onPickup=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,pickupAddr:addr}));sPLat(lat);sPLng(lng)};
+  const onDropoff=(addr:string,lat:number,lng:number)=>{sF(p=>({...p,dropoffAddr:addr}));sDLat(lat);sDLng(lng)};
   const submit=async()=>{
     if(!f.title||!f.pickupAddr||!f.dropoffAddr||!userId)return;
     const validItems=items.filter(it=>it.name&&parseFloat(it.cost)>0);
@@ -250,12 +295,12 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       const res=await payFetch(`${SERVER_URL}/task`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({title:f.title,category:f.category,details:f.details||"No instructions.",pickupAddr:f.pickupAddr,pickupLat:50.85+(Math.random()-0.5)*0.02,pickupLng:4.35+(Math.random()-0.5)*0.02,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85+(Math.random()-0.5)*0.02,dropoffLng:dLng||4.35+(Math.random()-0.5)*0.02,privacyZone:parseInt(f.privacyZone)||100,itemCost:itemCostTotal,suggestedFee:parseFloat(f.suggestedFee)||0,items:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)})),posterId:userId}),
+        body:JSON.stringify({title:f.title,category:f.category,details:f.details||"No instructions.",pickupAddr:f.pickupAddr,pickupLat:pLat||50.85+(Math.random()-0.5)*0.02,pickupLng:pLng||4.35+(Math.random()-0.5)*0.02,dropoffAddr:f.dropoffAddr,dropoffLat:dLat||50.85+(Math.random()-0.5)*0.02,dropoffLng:dLng||4.35+(Math.random()-0.5)*0.02,privacyZone:parseInt(f.privacyZone)||100,itemCost:itemCostTotal,suggestedFee:parseFloat(f.suggestedFee)||0,items:validItems.map(it=>({name:it.name,cost:parseFloat(it.cost)})),posterId:userId}),
       });
       if(!res.ok){const e=await res.json();throw new Error(e.error);}
       setOk(true);setTimeout(()=>setOk(false),3500);
       sF({title:"",pickupAddr:"",dropoffAddr:"",suggestedFee:"",details:"",category:"food",privacyZone:"100"});
-      setItems([{name:"",cost:""}]);setGps(false);
+      setItems([{name:"",cost:""}]);sPLat(0);sPLng(0);sDLat(0);sDLng(0);
     }catch(e:any){alert(e.message);}
   };
   return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("post_title")}</h2>
@@ -264,8 +309,8 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     <div className="dz-form-grid">
       <div><label style={S.fLbl}>{t("what")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={t("what_ph")} value={f.title} onChange={set("title")}/></div>
       <div><label style={S.fLbl}>{t("category")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.category} onChange={set("category")}><option value="food">🍔 {t("food")}</option><option value="grocery">🛒 {t("grocery")}</option><option value="errand">📦 {t("errand")}</option></select></div>
-      <div><label style={S.fLbl}>{t("pickup")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder={t("pickup_ph")} value={f.pickupAddr} onChange={set("pickupAddr")}/></div>
-      <div><label style={S.fLbl}>{t("dropoff")}</label><div style={{display:"flex",gap:6}}><input style={{...S.fInp,flex:1,fontSize:14,padding:12}} placeholder={t("dropoff_ph")} value={f.dropoffAddr} onChange={set("dropoffAddr")}/><button style={{...S.gpsBtn,minWidth:48,minHeight:48}} onClick={useLoc}>📍</button></div>{gps&&<div style={{fontSize:10,color:"#a855f7",marginTop:3}}>{t("gps_ok")}</div>}</div>
+      <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("pickup")}</label><AddressMapPicker label={t("pickup_ph")} value={f.pickupAddr} lat={pLat} lng={pLng} onSelect={onPickup} userLoc={userLoc}/></div>
+      <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("dropoff")}</label><AddressMapPicker label={t("dropoff_ph")} value={f.dropoffAddr} lat={dLat} lng={dLng} onSelect={onDropoff} userLoc={userLoc}/></div>
       <div><label style={S.fLbl}>{t("delivery_fee")}</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={f.suggestedFee} onChange={set("suggestedFee")}/></div>
       <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={f.privacyZone} onChange={set("privacyZone")}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
       <div style={{gridColumn:"1/-1"}}><label style={S.fLbl}>{t("instructions")}</label><textarea style={{...S.fInp,minHeight:70,fontSize:14,padding:12,resize:"vertical",fontFamily:"inherit"}} placeholder={t("instructions_ph")} value={f.details} onChange={set("details")}/></div>
@@ -289,10 +334,10 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
 
 function WalletView(){
   const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user}=useUser(walletAddr);const stats=useStats();
+  const courierHist=useCourierHistory(user?._id??null);
+  const posterHist=usePosterHistory(user?._id??null);
   if(!walletAddr)return<div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2><div style={{marginTop:20,textAlign:"center"}}><button style={{...S.postBtn,maxWidth:320,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 {t("connect_to_use")}</button></div></div>;
   if(!user)return<div style={S.postWrap}><div style={S.empty}>{t("loading")}</div></div>;
-  const courierHist=useCourierHistory(user._id);
-  const posterHist=usePosterHistory(user._id);
   const totalKm=courierHist.reduce((s:number,h:any)=>s+h.tripKm,0);
   const totalEarned=courierHist.filter((h:any)=>h.status==="completed").reduce((s:number,h:any)=>s+h.acceptedFee,0);
   return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2>
@@ -357,7 +402,7 @@ export default function App(){
   <div style={{minHeight:"100vh",background:"#0b0c12",color:"#bbb",fontFamily:"'Outfit',sans-serif"}}><style>{CSS}</style>
     <header style={{position:"sticky",top:0,zIndex:1000,background:"rgba(11,12,18,0.92)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
       <div style={{maxWidth:1120,margin:"0 auto",padding:"0 12px",height:54,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setView("home")}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#00ff87,#00b4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#000",fontWeight:800}}>◆</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#fff",letterSpacing:2}}>DROPZONE</div></div>
+        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setView("home")}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#00ff87,#00b4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#000",fontWeight:800}}>◆</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#fff",letterSpacing:2}}>GIGS.MOM</div></div>
         <nav className="dz-header-nav">{NAV.map(n=><button key={n.id} onClick={()=>setView(n.id)} style={{...S.navBtn,...(view===n.id?S.navAct:{})}}>{translate(n.lk)}</button>)}</nav>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{position:"relative"}}>
@@ -379,7 +424,7 @@ export default function App(){
     </main>
     <div className="dz-bottom-nav">{NAV.map(n=><button key={n.id} className={view===n.id?"active":""} onClick={()=>setView(n.id)}><span className="ni">{n.i}</span>{translate(n.lk)}</button>)}</div>
     {toast&&<div style={{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",padding:"10px 20px",borderRadius:12,background:"rgba(11,12,18,0.95)",border:"1px solid rgba(0,255,135,0.18)",color:"#00ff87",fontSize:12,fontWeight:600,zIndex:9999,animation:"slideT .3s ease",backdropFilter:"blur(12px)",whiteSpace:"nowrap"}}>{toast}</div>}
-    {showLangMenu&&<div style={{position:"fixed",inset:0,zIndex:1999}} onClick={()=>setShowLangMenu(false)}/>}
+    {showLangMenu&&<div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowLangMenu(false)}/>}
   </div>
   </LangCtx.Provider></WalletCtx.Provider>;
 }
