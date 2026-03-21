@@ -12,8 +12,10 @@ import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as payments from "../payments.js";
+import type * as proofs from "../proofs.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
+import type * as workflows from "../workflows.js";
 
 import type {
   ApiFromModules,
@@ -26,8 +28,10 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   http: typeof http;
   payments: typeof payments;
+  proofs: typeof proofs;
   tasks: typeof tasks;
   users: typeof users;
+  workflows: typeof workflows;
 }>;
 
 /**
