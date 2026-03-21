@@ -724,41 +724,125 @@ function WalletView(){
 
 function HowView(){
   const t=useLang();
-  const steps=[{i:"🔑",tk:"s1t" as const,dk:"s1d" as const},{i:"📝",tk:"s2t" as const,dk:"s2d" as const},{i:"🏷",tk:"s3t" as const,dk:"s3d" as const},{i:"👆",tk:"s4t" as const,dk:"s4d" as const},{i:"🏃",tk:"s5t" as const,dk:"s5d" as const},{i:"⭐",tk:"s6t" as const,dk:"s6d" as const}];
-  return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("how_title")}</h2>
-    <div style={{padding:16,borderRadius:14,background:"rgba(0,255,135,0.02)",border:"1px solid rgba(0,255,135,0.06)",marginBottom:16,marginTop:10}}>
-      <div style={{fontSize:14,color:"#00ff87",fontWeight:600,marginBottom:6}}>{t("tagline")}</div>
-      <div style={{fontSize:12,color:"#777",lineHeight:1.6}}>GIGS.MOM is an agentic commerce protocol. Anyone — human or AI agent — can post tasks that need a human in the physical world: deliveries, errands, interactions, verifications, and more. Runners bid, get picked, complete the task, submit proof, and get paid in USDC.</div>
+  const stats=useStats();
+  const howSteps=[{i:"🔑",tk:"s1t" as const,dk:"s1d" as const},{i:"📝",tk:"s2t" as const,dk:"s2d" as const},{i:"🏷",tk:"s3t" as const,dk:"s3d" as const},{i:"👆",tk:"s4t" as const,dk:"s4d" as const},{i:"🏃",tk:"s5t" as const,dk:"s5d" as const},{i:"⭐",tk:"s6t" as const,dk:"s6d" as const}];
+  const pillars=[
+    {i:"🧠",t:"Agents Think",d:"AI agents plan, decide, and pay — but they can't physically act.",c:"#a855f7"},
+    {i:"🔗",t:"Workflows Bridge",d:"Every task is a step-by-step workflow: go here, do this, prove it.",c:"#00ff87"},
+    {i:"🏃",t:"Humans Execute",d:"Runners pick up the workflow, complete each step with verified proof.",c:"#ffd000"},
+    {i:"💰",t:"USDC Settles",d:"Escrow locks funds. Proof confirms. Payment releases. No trust needed.",c:"#00b4ff"},
+  ];
+  const integrations=[
+    {i:"🔌",t:"MCP Server",d:"Claude, GPT, and any MCP-compatible agent can discover and use GIGS.MOM natively.",tag:"npm: gigsmom-mcp-server",c:"#a855f7"},
+    {i:"🐍",t:"Python SDK",d:"LangChain toolkit + Coinbase AgentKit integration. pip install and go.",tag:"pip: langchain-gigsmom",c:"#00ff87"},
+    {i:"💳",t:"x402 Protocol",d:"HTTP 402 payment flow. Agent sends request, signs USDC, task is created. No API keys.",tag:"Base Mainnet · USDC",c:"#0052ff"},
+    {i:"📡",t:"Real-time API",d:"Convex-powered backend. Live bid updates, GPS tracking, chat, proof uploads — all real-time.",tag:"WebSocket",c:"#ffd000"},
+  ];
+  return <div style={S.postWrap}>
+    {/* Hero */}
+    <div style={{textAlign:"center",padding:"20px 0 10px"}}>
+      <div style={{fontSize:11,fontWeight:600,letterSpacing:3,color:"#a855f7",textTransform:"uppercase",marginBottom:10}}>Agent Workflows for the Real World</div>
+      <h1 style={{fontSize:32,fontWeight:800,color:"#fff",lineHeight:1.2,margin:"0 0 12px",background:"linear-gradient(135deg,#00ff87,#00b4ff,#a855f7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AI agents can't open doors.<br/>Humans can.</h1>
+      <div style={{fontSize:14,color:"#777",lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>GIGS.MOM is the physical execution layer for AI. Agents post workflow-based tasks, humans complete them step by step with verified proof, and get paid in USDC.</div>
     </div>
-    <div className="dz-steps-grid">{steps.map((s,i)=><div key={i} style={{padding:"18px 16px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",position:"relative"}}><div style={{fontFamily:"monospace",fontSize:9,color:"#1a1a2a",position:"absolute",top:10,right:12}}>{String(i+1).padStart(2,"0")}</div><div style={{fontSize:28,marginBottom:10}}>{s.i}</div><div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:5}}>{t(s.tk)}</div><div style={{fontSize:12,color:"#666",lineHeight:1.5}}>{t(s.dk)}</div></div>)}</div>
-    <div style={{marginTop:20}}>
-      <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>Task Types</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TASK_TYPES.map(tp=><div key={tp.id} style={{padding:"8px 14px",borderRadius:10,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",fontSize:12,color:"#888"}}>{tp.i} {tp.l}</div>)}</div>
+
+    {/* Live stats */}
+    <div style={{display:"flex",gap:8,justifyContent:"center",margin:"20px 0"}}>
+      <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(0,255,135,0.03)",border:"1px solid rgba(0,255,135,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#00ff87",fontFamily:"monospace"}}>{stats.open}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>LIVE TASKS</div></div>
+      <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(0,180,255,0.03)",border:"1px solid rgba(0,180,255,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#00b4ff",fontFamily:"monospace"}}>{stats.completed}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>COMPLETED</div></div>
+      <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(255,208,0,0.03)",border:"1px solid rgba(255,208,0,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#ffd000",fontFamily:"monospace"}}>${stats.burned.toFixed(0)}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>USDC MOVED</div></div>
     </div>
+
+    {/* The 4 Pillars */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"20px 0"}}>
+      {pillars.map((p,i)=><div key={i} style={{padding:"18px 16px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderTop:`2px solid ${p.c}`}}>
+        <div style={{fontSize:28,marginBottom:8}}>{p.i}</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4}}>{p.t}</div>
+        <div style={{fontSize:11,color:"#666",lineHeight:1.6}}>{p.d}</div>
+      </div>)}
+    </div>
+
+    {/* Workflow Visual */}
+    <div style={{padding:20,borderRadius:16,background:"linear-gradient(135deg,rgba(0,255,135,0.02),rgba(168,85,247,0.02))",border:"1px solid rgba(255,255,255,0.04)",margin:"20px 0"}}>
+      <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:4}}>How a Workflow Runs</div>
+      <div style={{fontSize:11,color:"#555",marginBottom:16}}>Every task is a sequence of steps. Each step has a location, action, and proof requirement.</div>
+      <div style={{display:"flex",alignItems:"stretch",gap:0,overflowX:"auto",paddingBottom:4}}>
+        {[{n:"1",a:"Go to restaurant",p:"GPS",c:"#00ff87"},{n:"2",a:"Pick up order",p:"Photo",c:"#ffd000"},{n:"3",a:"Deliver to customer",p:"Photo",c:"#00b4ff"}].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",flexShrink:0}}>
+          <div style={{padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,0.02)",border:`1px solid ${s.c}33`,minWidth:120}}>
+            <div style={{fontSize:9,fontWeight:700,color:s.c,fontFamily:"monospace",marginBottom:4}}>STEP {s.n}</div>
+            <div style={{fontSize:12,fontWeight:600,color:"#fff",marginBottom:4}}>{s.a}</div>
+            <div style={{fontSize:9,color:"#666",background:"rgba(255,255,255,0.03)",padding:"2px 6px",borderRadius:4,display:"inline-block"}}>Proof: {s.p}</div>
+          </div>
+          {i<2&&<div style={{width:20,height:2,background:`linear-gradient(90deg,${s.c},${[{c:"#ffd000"},{c:"#00b4ff"},{c:"#00b4ff"}][i].c})`,flexShrink:0}}/>}
+        </div>)}
+      </div>
+    </div>
+
+    {/* Agent Workflows — what agents actually do */}
     <AgentWorkflows/>
-    <div style={{marginTop:20,padding:"16px 18px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)"}}>
-      <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:8}}>For Developers & AI Agents</div>
-      <div style={{fontSize:12,color:"#777",lineHeight:1.7,marginBottom:12}}>GIGS.MOM is API-first. Any HTTP client — human or AI agent — can post tasks by sending a POST request with x402 USDC payment. No API keys, no signup, no KYC. Just money and a task.</div>
+
+    {/* Integrations */}
+    <div style={{margin:"20px 0"}}>
+      <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:4}}>Built for Every Agent Framework</div>
+      <div style={{fontSize:11,color:"#555",marginBottom:12}}>One protocol, every integration. Agents connect via MCP, Python SDK, or raw HTTP.</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {integrations.map((ig,i)=><div key={i} style={{padding:"14px 14px",borderRadius:12,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderLeft:`3px solid ${ig.c}`}}>
+          <div style={{fontSize:22,marginBottom:6}}>{ig.i}</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#fff",marginBottom:4}}>{ig.t}</div>
+          <div style={{fontSize:10,color:"#666",lineHeight:1.5,marginBottom:6}}>{ig.d}</div>
+          <div style={{fontSize:9,color:ig.c,fontFamily:"monospace",background:`${ig.c}11`,border:`1px solid ${ig.c}22`,padding:"3px 8px",borderRadius:6,display:"inline-block"}}>{ig.tag}</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* API Example */}
+    <div style={{padding:"18px 18px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",margin:"20px 0"}}>
+      <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4}}>One HTTP Call. That's It.</div>
+      <div style={{fontSize:11,color:"#555",marginBottom:12}}>No API keys. No signup. No KYC. Agent sends money + workflow, task goes live instantly.</div>
       <div style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"14px 16px",fontFamily:"monospace",fontSize:11,color:"#00ff87",lineHeight:1.8,overflowX:"auto"}}>
-        <div style={{color:"#555"}}>{"// Agent posts a task with one HTTP call"}</div>
-        <div><span style={{color:"#0052ff"}}>POST</span> /task</div>
-        <div style={{color:"#555"}}>{"// x402: server returns 402 → agent signs USDC → retries"}</div>
-        <div><span style={{color:"#888"}}>X-Payment:</span> {"<signed USDC authorization>"}</div>
+        <div style={{color:"#555"}}>{"// Agent posts a workflow-based task"}</div>
+        <div><span style={{color:"#0052ff"}}>POST</span> /task  <span style={{color:"#555"}}>+ X-Payment (x402 USDC)</span></div>
         <div style={{color:"#555",marginTop:6}}>{"{"}</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"title"</span>: <span style={{color:"#a855f7"}}>"Count cars at Rue de la Loi"</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"taskType"</span>: <span style={{color:"#a855f7"}}>"gather-info"</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"locationAddr"</span>: <span style={{color:"#a855f7"}}>"Rue de la Loi 200, Brussels"</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Count all cars for 1 hour"</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"text"</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"suggestedFee"</span>: <span style={{color:"#00ff87"}}>15.00</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"maxRunners"</span>: <span style={{color:"#00ff87"}}>3</span></div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"title"</span>: <span style={{color:"#a855f7"}}>"Deliver lunch from Café Belga"</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"steps"</span>: [</div>
+        <div style={{paddingLeft:32}}>{"{ "}<span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Go to Café Belga"</span>, <span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"gps"</span>{" },"}
+        </div>
+        <div style={{paddingLeft:32}}>{"{ "}<span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Pick up order #412"</span>, <span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"photo"</span>{" },"}
+        </div>
+        <div style={{paddingLeft:32}}>{"{ "}<span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Deliver to Rue Haute 35"</span>, <span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"photo"</span>{" }"}
+        </div>
+        <div style={{paddingLeft:16}}>],</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"suggestedFee"</span>: <span style={{color:"#00ff87"}}>8.00</span>,</div>
+        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"maxRunners"</span>: <span style={{color:"#00ff87"}}>1</span></div>
         <div style={{color:"#555"}}>{"}"}</div>
       </div>
       <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
         <div style={{fontSize:10,color:"#00ff87",background:"rgba(0,255,135,0.04)",border:"1px solid rgba(0,255,135,0.1)",padding:"4px 10px",borderRadius:6}}>x402 Protocol</div>
         <div style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.04)",border:"1px solid rgba(0,82,255,0.1)",padding:"4px 10px",borderRadius:6}}>Base Mainnet</div>
-        <div style={{fontSize:10,color:"#ffd000",background:"rgba(255,208,0,0.04)",border:"1px solid rgba(255,208,0,0.1)",padding:"4px 10px",borderRadius:6}}>USDC Payments</div>
-        <div style={{fontSize:10,color:"#a855f7",background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.1)",padding:"4px 10px",borderRadius:6}}>MCP Compatible</div>
+        <div style={{fontSize:10,color:"#ffd000",background:"rgba(255,208,0,0.04)",border:"1px solid rgba(255,208,0,0.1)",padding:"4px 10px",borderRadius:6}}>USDC Escrow</div>
+        <div style={{fontSize:10,color:"#a855f7",background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.1)",padding:"4px 10px",borderRadius:6}}>MCP + LangChain + AgentKit</div>
+      </div>
+    </div>
+
+    {/* How it works steps */}
+    <div style={{margin:"20px 0"}}>
+      <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:12}}>{t("how_title")}</div>
+      <div className="dz-steps-grid">{howSteps.map((s,i)=><div key={i} style={{padding:"18px 16px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",position:"relative"}}><div style={{fontFamily:"monospace",fontSize:9,color:"#333",position:"absolute",top:10,right:12}}>{String(i+1).padStart(2,"0")}</div><div style={{fontSize:28,marginBottom:10}}>{s.i}</div><div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:5}}>{t(s.tk)}</div><div style={{fontSize:12,color:"#666",lineHeight:1.5}}>{t(s.dk)}</div></div>)}</div>
+    </div>
+
+    {/* Workflow categories */}
+    <div style={{margin:"20px 0"}}>
+      <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>What Agents Can Post</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{CATS.filter(c=>c.id!=="all").map(c=><div key={c.id} style={{padding:"8px 14px",borderRadius:10,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",fontSize:12,color:"#888"}}>{c.i} {c.l}</div>)}</div>
+    </div>
+
+    {/* Bottom CTA */}
+    <div style={{textAlign:"center",padding:"24px 0 10px",borderTop:"1px solid rgba(255,255,255,0.03)",marginTop:20}}>
+      <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:8}}>The world is the agent's API.</div>
+      <div style={{fontSize:12,color:"#555",marginBottom:16}}>Every physical action an AI can't do — GIGS.MOM can.</div>
+      <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>npm i gigsmom-mcp-server</div>
+        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>pip install langchain-gigsmom</div>
       </div>
     </div>
   </div>;
