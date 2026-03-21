@@ -203,20 +203,26 @@ export const sendUSDC = internalAction({
 export const verifyX402 = internalAction({
   args: { paymentBase64: v.string(), requirements: v.any() },
   handler: async (_ctx, { paymentBase64, requirements }) => {
+    const paymentPayload = JSON.parse(Buffer.from(paymentBase64, "base64").toString("utf8"));
+    const x402Version = paymentPayload.x402Version || 1;
+
     const vr = await fetch(`${FACILITATOR}/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentHeader: paymentBase64, paymentRequirements: requirements }),
+      body: JSON.stringify({ x402Version, paymentPayload, paymentRequirements: requirements }),
     });
     const vd = (await vr.json()) as { isValid: boolean; invalidReason?: string };
+    console.log("Facilitator verify response:", JSON.stringify(vd));
     if (!vd.isValid) return { ok: false, reason: vd.invalidReason || "Invalid" };
 
     const sr = await fetch(`${FACILITATOR}/settle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentHeader: paymentBase64, paymentRequirements: requirements }),
+      body: JSON.stringify({ x402Version, paymentPayload, paymentRequirements: requirements }),
     });
-    if (!sr.ok) return { ok: false, reason: "Settlement failed: " + (await sr.text()) };
+    const sd = await sr.json();
+    console.log("Facilitator settle response:", JSON.stringify(sd));
+    if (!sr.ok) return { ok: false, reason: "Settlement failed: " + JSON.stringify(sd) };
 
     return { ok: true };
   },
