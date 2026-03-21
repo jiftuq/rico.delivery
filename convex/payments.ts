@@ -203,12 +203,10 @@ export const sendUSDC = internalAction({
 export const verifyX402 = internalAction({
   args: { paymentBase64: v.string(), requirements: v.any() },
   handler: async (_ctx, { paymentBase64, requirements }) => {
-    const payment = JSON.parse(Buffer.from(paymentBase64, "base64").toString("utf8"));
-
     const vr = await fetch(`${FACILITATOR}/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment, paymentRequirements: requirements }),
+      body: JSON.stringify({ paymentHeader: paymentBase64, paymentRequirements: requirements }),
     });
     const vd = (await vr.json()) as { isValid: boolean; invalidReason?: string };
     if (!vd.isValid) return { ok: false, reason: vd.invalidReason || "Invalid" };
@@ -216,7 +214,7 @@ export const verifyX402 = internalAction({
     const sr = await fetch(`${FACILITATOR}/settle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment, paymentRequirements: requirements }),
+      body: JSON.stringify({ paymentHeader: paymentBase64, paymentRequirements: requirements }),
     });
     if (!sr.ok) return { ok: false, reason: "Settlement failed: " + (await sr.text()) };
 
