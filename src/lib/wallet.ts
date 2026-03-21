@@ -10,14 +10,24 @@ const sdk = new CoinbaseWalletSDK({
 
 export const provider = sdk.makeWeb3Provider();
 
-export const walletClient = createWalletClient({
-  chain: base,
-  transport: custom(provider as any),
-});
+let _walletClient: ReturnType<typeof createWalletClient> | null = null;
+
+function getWalletClient(account: `0x${string}`) {
+  if (!_walletClient || (_walletClient.account?.address !== account)) {
+    _walletClient = createWalletClient({
+      account,
+      chain: base,
+      transport: custom(provider as any),
+    });
+  }
+  return _walletClient;
+}
 
 export async function connectWallet(): Promise<string> {
   const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
-  return accounts[0];
+  const addr = accounts[0];
+  getWalletClient(addr as `0x${string}`);
+  return addr;
 }
 
 // Derive the HTTP actions URL from the Convex deployment URL
@@ -33,11 +43,16 @@ export async function payFetch(url: string | URL | Request, init?: RequestInit):
   const header = res.headers.get("X-Payment-Required");
   if (!header) return res;
 
+  if (!_walletClient?.account) {
+    const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
+    getWalletClient(accounts[0] as `0x${string}`);
+  }
+
   const { accepts } = JSON.parse(header);
   const paymentRequirements = accepts[0];
   const x402Version = 1;
 
-  const paymentHeader = await createPaymentHeader(walletClient, x402Version, paymentRequirements);
+  const paymentHeader = await createPaymentHeader(_walletClient!, x402Version, paymentRequirements);
 
   return fetch(url, {
     ...init,
