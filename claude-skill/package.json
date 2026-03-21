@@ -1,0 +1,29 @@
+{
+  "name": "gigsmom-claude-skill",
+  "version": "1.0.0",
+  "description": "Claude Code skill for GIGS.MOM — post workflow-based tasks for humans in the physical world. Deliveries, moving, info gathering, verification, and more. USDC on Base.",
+  "keywords": [
+    "claude-code",
+    "claude-skill",
+    "claude-plugin",
+    "mcp",
+    "ai-agents",
+    "agentic-commerce",
+    "gigs",
+    "physical-world",
+    "workflows",
+    "usdc",
+    "base",
+    "x402"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jiftuq/dropzone"
+  },
+  "homepage": "https://gigs.mom",
+  "license": "MIT",
+  "files": [
+    "skills/gigsmom/SKILL.md",
+    "README.md"
+  ]
+}
