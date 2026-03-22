@@ -360,25 +360,46 @@ const openapi = httpAction(async (_ctx, request) => {
 const taskDiscover = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const resource = new URL("/task", request.url).toString();
+  const paymentRequired = {
+    x402Version: 2,
+    schemes: [{
+      scheme: "exact",
+      network: NETWORK,
+      maxAmountRequired: "1000000",
+      resource,
+      description: "GIGS.MOM task posting — min $1 USDC",
+      mimeType: "application/json",
+      payTo: RECEIVING_WALLET,
+      maxTimeoutSeconds: 300,
+      asset: USDC_ADDRESS,
+      extra: { name: "USD Coin", version: "2" },
+    }],
+  };
+  const jsonStr = JSON.stringify(paymentRequired);
+  const bytes = new TextEncoder().encode(jsonStr);
+  let b64 = "";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i], b1 = bytes[i + 1] ?? 0, b2 = bytes[i + 2] ?? 0;
+    b64 += chars[b0 >> 2] + chars[((b0 & 3) << 4) | (b1 >> 4)] +
+      (i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=") +
+      (i + 2 < bytes.length ? chars[b2 & 63] : "=");
+  }
   return new Response(
     JSON.stringify({
       error: "Payment required",
       x402: true,
       description: "GIGS.MOM — Post workflow-based tasks for humans in the physical world. Deliveries, moving, info gathering, verification. Pay in USDC on Base.",
-      accepts: [{
-        scheme: "exact",
-        network: NETWORK,
-        maxAmountRequired: "1000000",
-        resource,
-        description: "GIGS.MOM task posting — min $1 USDC",
-        mimeType: "application/json",
-        payTo: RECEIVING_WALLET,
-        maxTimeoutSeconds: 300,
-        asset: USDC_ADDRESS,
-        extra: { name: "USD Coin", version: "2" },
-      }],
+      accepts: paymentRequired.schemes,
     }),
-    { status: 402, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } }
+    {
+      status: 402,
+      headers: {
+        "Content-Type": "application/json",
+        "PAYMENT-REQUIRED": b64,
+        ...corsHeaders(origin),
+      },
+    }
   );
 });
 
