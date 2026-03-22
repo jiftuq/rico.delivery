@@ -18,7 +18,7 @@ startCommand:
       GIGSMOM_URL:
         type: string
         description: "Your GIGS.MOM Convex deployment URL"
-        default: "https://abundant-bear-728.convex.site"
+        default: "https://cool-rooster-544.convex.site"
       GIGSMOM_PRIVATE_KEY:
         type: string
         description: "Agent wallet private key (0x...) with USDC on Base for auto-payment"

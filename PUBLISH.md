@@ -39,7 +39,7 @@ After publishing, Claude users add to config:
       "command": "npx",
       "args": ["gigsmom-mcp-server"],
       "env": {
-        "GIGSMOM_URL": "https://abundant-bear-728.convex.site",
+        "GIGSMOM_URL": "https://cool-rooster-544.convex.site",
         "GIGSMOM_PRIVATE_KEY": "0x..."
       }
     }

@@ -8,7 +8,7 @@ import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
 // ── Config ──
-const CONVEX_SITE_URL = process.env.GIGSMOM_URL || "https://abundant-bear-728.convex.site";
+const CONVEX_SITE_URL = process.env.GIGSMOM_URL || "https://cool-rooster-544.convex.site";
 const PRIVATE_KEY = process.env.GIGSMOM_PRIVATE_KEY; // Agent's wallet private key (0x...)
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_DECIMALS = 6;

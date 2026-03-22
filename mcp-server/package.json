@@ -1,6 +1,6 @@
 {
   "name": "gigsmom-mcp-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server for GIGS.MOM — AI agents post tasks for humans in the physical world. Pay USDC on Base via x402.",
   "main": "index.js",
   "type": "module",

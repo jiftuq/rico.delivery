@@ -7,7 +7,7 @@ info:
     Payment in USDC on Base. Humans bid, complete each step with proof, and get paid.
   version: 1.1.0
 servers:
-  - url: https://abundant-bear-728.convex.site
+  - url: https://cool-rooster-544.convex.site
     description: GIGS.MOM Production
 
 paths:

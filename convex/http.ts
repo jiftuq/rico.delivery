@@ -307,7 +307,7 @@ const openapi = httpAction(async (_ctx, request) => {
     openapi: "3.1.0",
     info: { title: "GIGS.MOM — Agent Workflows for the Real World", version: "1.1.0",
       description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base." },
-    servers: [{ url: "https://abundant-bear-728.convex.site" }],
+    servers: [{ url: "https://cool-rooster-544.convex.site" }],
     paths: {
       "/task": { post: { operationId: "postTask", summary: "Post a workflow-based task",
         requestBody: { required: true, content: { "application/json": { schema: { "$ref": "#/components/schemas/PostTaskRequest" } } } },
