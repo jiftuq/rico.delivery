@@ -56,7 +56,8 @@ function send402(requirements: ReturnType<typeof buildRequirements>, origin?: st
 // ── POST /task ──
 const postTask = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
 
   const itemCost = parseFloat(body?.itemCost) || 0;
   const suggestedFee = parseFloat(body?.suggestedFee) || 0;
@@ -88,7 +89,8 @@ const postTask = httpAction(async (ctx, request) => {
 // ── POST /accept-bid ──
 const acceptBid = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
   const { taskId, bidId, posterId } = body;
 
   if (!taskId || !bidId || !posterId) {
@@ -167,7 +169,8 @@ const acceptBid = httpAction(async (ctx, request) => {
 // ── POST /confirm-delivery ──
 const confirmDelivery = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
   const { taskId, posterId, runnerId, ratingScore, ratingComment } = body;
 
   if (!taskId || !posterId) {
@@ -248,7 +251,8 @@ const confirmDelivery = httpAction(async (ctx, request) => {
 // ── POST /cancel-task ──
 const cancelTask = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
   const { taskId, posterId } = body;
 
   if (!taskId || !posterId) {
