@@ -354,7 +354,32 @@ const openapi = httpAction(async (_ctx, request) => {
 // ── GET /task — x402 discovery (returns 402 with payment schema) ──
 const taskDiscover = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+  let receivingWallet: string;
+  try {
+    receivingWallet = await ctx.runAction(internal.payments.getReceivingWallet, {});
+  } catch {
+    // Fallback: return a generic 402 schema without a specific wallet
+    return new Response(
+      JSON.stringify({
+        error: "Payment required",
+        x402: true,
+        description: "GIGS.MOM — Post workflow-based tasks for humans in the physical world. Deliveries, moving, info gathering, verification. Pay in USDC on Base.",
+        accepts: [{
+          scheme: "exact",
+          network: NETWORK,
+          maxAmountRequired: "1000000",
+          resource: new URL("/task", request.url).toString(),
+          description: "GIGS.MOM task posting — min $1 USDC",
+          mimeType: "application/json",
+          payTo: "0x0000000000000000000000000000000000000000",
+          maxTimeoutSeconds: 300,
+          asset: USDC_ADDRESS,
+          extra: { name: "USD Coin", version: "2" },
+        }],
+      }),
+      { status: 402, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } }
+    );
+  }
   const resource = new URL("/task", request.url).toString();
   const requirements = buildRequirements(1.00, resource, "GIGS.MOM — Post workflow tasks for humans. Min $1 USDC.", receivingWallet);
   return send402(requirements, origin);
