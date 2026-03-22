@@ -310,13 +310,16 @@ const openapi = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const spec = {
     openapi: "3.1.0",
-    info: { title: "GIGS.MOM — Agent Workflows for the Real World", version: "1.1.0",
-      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base." },
+    info: { title: "GIGS.MOM — Agent Workflows for the Real World", version: "1.2.0",
+      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base.",
+      guidance: "Use POST /task with workflow steps to hire humans for real-world actions. Payment is automatic via x402 — send USDC on Base. Each task is a sequence of steps with proof requirements." },
     servers: [{ url: "https://cool-rooster-544.convex.site" }],
     paths: {
       "/task": { post: { operationId: "postTask", summary: "Post a workflow-based task",
+        "x-payment-info": { protocols: ["x402"], pricingMode: "range", minPrice: "1000000", maxPrice: "100000000", asset: USDC_ADDRESS, network: "base", payTo: RECEIVING_WALLET },
         requestBody: { required: true, content: { "application/json": { schema: { "$ref": "#/components/schemas/PostTaskRequest" } } } },
-        responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } } } } },
+        responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } },
+          "402": { description: "Payment Required — send USDC on Base via x402 protocol" } } } },
       "/accept-bid": { post: { operationId: "acceptBid", summary: "Accept a runner's bid",
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId","posterId"],
           properties: { taskId: { type: "string" }, bidId: { type: "string" }, posterId: { type: "string" } } } } } },
@@ -403,6 +406,15 @@ const taskDiscover = httpAction(async (_ctx, request) => {
   );
 });
 
+// ── GET /.well-known/x402 — discovery fallback ──
+const wellKnownX402 = httpAction(async (_ctx, request) => {
+  const origin = request.headers.get("Origin") || undefined;
+  return new Response(
+    JSON.stringify({ version: 1, resources: ["POST /task"] }),
+    { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } }
+  );
+});
+
 // ── Router ──
 const http = httpRouter();
 
@@ -424,5 +436,7 @@ http.route({ path: "/openapi.json", method: "GET", handler: openapi });
 http.route({ path: "/openapi.json", method: "OPTIONS", handler: corsOptions });
 http.route({ path: "/.well-known/openapi.json", method: "GET", handler: openapi });
 http.route({ path: "/.well-known/openapi.json", method: "OPTIONS", handler: corsOptions });
+http.route({ path: "/.well-known/x402", method: "GET", handler: wellKnownX402 });
+http.route({ path: "/.well-known/x402", method: "OPTIONS", handler: corsOptions });
 
 export default http;
