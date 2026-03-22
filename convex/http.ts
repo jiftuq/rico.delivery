@@ -56,6 +56,15 @@ function send402(requirements: ReturnType<typeof buildRequirements>, origin?: st
 // ── POST /task ──
 const postTask = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
+
+  // Check for payment header FIRST — return 402 discovery before parsing body
+  if (!request.headers.get("X-Payment")) {
+    return new Response(
+      JSON.stringify({ error: "Payment required", accepts: [{ scheme: "exact", network: NETWORK, maxAmountRequired: "1000000", resource: "https://cool-rooster-544.convex.site/task", description: "GIGS.MOM task posting — min $1 USDC", mimeType: "application/json", payTo: RECEIVING_WALLET, maxTimeoutSeconds: 300, asset: USDC_ADDRESS, extra: { name: "USD Coin", version: "2" } }] }),
+      { status: 402, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } }
+    );
+  }
+
   let body: any;
   try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
 
@@ -69,11 +78,8 @@ const postTask = httpAction(async (ctx, request) => {
   const resource = new URL("/task", request.url).toString();
   const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`, receivingWallet);
 
-  const paymentHeader = request.headers.get("X-Payment");
-  if (!paymentHeader) return send402(requirements, origin);
-
   const result: any = await ctx.runAction(internal.payments.verifyX402, {
-    paymentBase64: paymentHeader,
+    paymentBase64: request.headers.get("X-Payment")!,
     requirements,
   });
   if (!result.ok) return json({ error: "Payment invalid", reason: result.reason }, 402, origin);
@@ -320,19 +326,6 @@ const openapi = httpAction(async (_ctx, request) => {
         requestBody: { required: true, content: { "application/json": { schema: { "$ref": "#/components/schemas/PostTaskRequest" } } } },
         responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } },
           "402": { description: "Payment Required — send USDC on Base via x402 protocol" } } } },
-      "/accept-bid": { post: { operationId: "acceptBid", summary: "Accept a runner's bid",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId","posterId"],
-          properties: { taskId: { type: "string" }, bidId: { type: "string" }, posterId: { type: "string" } } } } } },
-        responses: { "200": { description: "Bid accepted" } } } },
-      "/confirm-delivery": { post: { operationId: "confirmDelivery", summary: "Confirm completion and release USDC",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
-          properties: { taskId: { type: "string" }, posterId: { type: "string" }, runnerId: { type: "string" }, ratingScore: { type: "integer" }, ratingComment: { type: "string" } } } } } },
-        responses: { "200": { description: "Confirmed, USDC released" } } } },
-      "/cancel-task": { post: { operationId: "cancelTask", summary: "Cancel task and refund USDC",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
-          properties: { taskId: { type: "string" }, posterId: { type: "string" } } } } } },
-        responses: { "200": { description: "Cancelled, USDC refunded" } } } },
-      "/health": { get: { operationId: "healthCheck", summary: "Check server status", responses: { "200": { description: "OK" } } } }
     },
     components: { schemas: {
       WorkflowStep: { type: "object", properties: {
