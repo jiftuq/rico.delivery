@@ -58,10 +58,35 @@ const postTask = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
 
   // Check for payment header FIRST — return 402 discovery before parsing body
-  if (!request.headers.get("X-Payment")) {
+  if (!request.headers.get("X-Payment") && !request.headers.get("PAYMENT-SIGNATURE")) {
+    const paymentRequired = {
+      x402Version: 2,
+      schemes: [{
+        scheme: "exact",
+        network: NETWORK,
+        maxAmountRequired: "1000000",
+        resource: "https://cool-rooster-544.convex.site/task",
+        description: "GIGS.MOM task posting — min $1 USDC",
+        mimeType: "application/json",
+        payTo: RECEIVING_WALLET,
+        maxTimeoutSeconds: 300,
+        asset: USDC_ADDRESS,
+        extra: { name: "USD Coin", version: "2" },
+      }],
+    };
+    const jsonStr = JSON.stringify(paymentRequired);
+    const bytes = new TextEncoder().encode(jsonStr);
+    let b64 = "";
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (let i = 0; i < bytes.length; i += 3) {
+      const b0 = bytes[i], b1 = bytes[i + 1] ?? 0, b2 = bytes[i + 2] ?? 0;
+      b64 += chars[b0 >> 2] + chars[((b0 & 3) << 4) | (b1 >> 4)] +
+        (i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=") +
+        (i + 2 < bytes.length ? chars[b2 & 63] : "=");
+    }
     return new Response(
-      JSON.stringify({ error: "Payment required", accepts: [{ scheme: "exact", network: NETWORK, maxAmountRequired: "1000000", resource: "https://cool-rooster-544.convex.site/task", description: "GIGS.MOM task posting — min $1 USDC", mimeType: "application/json", payTo: RECEIVING_WALLET, maxTimeoutSeconds: 300, asset: USDC_ADDRESS, extra: { name: "USD Coin", version: "2" } }] }),
-      { status: 402, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } }
+      JSON.stringify({ error: "Payment required", x402: true, accepts: paymentRequired.schemes }),
+      { status: 402, headers: { "Content-Type": "application/json", "PAYMENT-REQUIRED": b64, ...corsHeaders(origin) } }
     );
   }
 
