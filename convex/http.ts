@@ -383,7 +383,7 @@ const taskDiscover = httpAction(async (_ctx, request) => {
   const resource = new URL("/task", request.url).toString();
   const paymentRequired = {
     x402Version: 2,
-    schemes: [{
+    accepts: [{
       scheme: "exact",
       network: NETWORK,
       maxAmountRequired: "1000000",
@@ -411,7 +411,7 @@ const taskDiscover = httpAction(async (_ctx, request) => {
       error: "Payment required",
       x402: true,
       description: "GIGS.MOM — Post workflow-based tasks for humans in the physical world. Deliveries, moving, info gathering, verification. Pay in USDC on Base.",
-      accepts: paymentRequired.schemes,
+      accepts: paymentRequired.accepts,
     }),
     {
       status: 402,
