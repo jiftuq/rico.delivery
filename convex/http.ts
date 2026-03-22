@@ -351,9 +351,19 @@ const openapi = httpAction(async (_ctx, request) => {
   });
 });
 
+// ── GET /task — x402 discovery (returns 402 with payment schema) ──
+const taskDiscover = httpAction(async (ctx, request) => {
+  const origin = request.headers.get("Origin") || undefined;
+  const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+  const resource = new URL("/task", request.url).toString();
+  const requirements = buildRequirements(1.00, resource, "GIGS.MOM — Post workflow tasks for humans. Min $1 USDC.", receivingWallet);
+  return send402(requirements, origin);
+});
+
 // ── Router ──
 const http = httpRouter();
 
+http.route({ path: "/task", method: "GET", handler: taskDiscover });
 http.route({ path: "/task", method: "POST", handler: postTask });
 http.route({ path: "/task", method: "OPTIONS", handler: corsOptions });
 
