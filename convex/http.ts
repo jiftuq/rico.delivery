@@ -5,6 +5,7 @@ import { Id } from "./_generated/dataModel";
 
 const NETWORK = "base";
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const RECEIVING_WALLET = "0xd2d255aa52D3c043e2bAa4A4c86b8e881Ce2BFba";
 
 function corsHeaders(origin?: string) {
   return {
@@ -63,7 +64,7 @@ const postTask = httpAction(async (ctx, request) => {
   // Multi-runner: escrow = fee * maxRunners. Single: itemCost + fee
   const totalUSDC = Math.max(maxRunners > 1 ? suggestedFee * maxRunners : itemCost + suggestedFee, 0.01);
 
-  const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+  const receivingWallet = RECEIVING_WALLET;
   const resource = new URL("/task", request.url).toString();
   const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`, receivingWallet);
 
@@ -114,7 +115,7 @@ const acceptBid = httpAction(async (ctx, request) => {
     const diff = newTotal - task.totalEscrowed;
 
     if (diff > 0.001) {
-      const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+      const receivingWallet = RECEIVING_WALLET;
       const resource = new URL("/accept-bid", request.url).toString();
       const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
       const paymentHeader = request.headers.get("X-Payment");
@@ -367,7 +368,7 @@ const taskDiscover = httpAction(async (_ctx, request) => {
         resource,
         description: "GIGS.MOM task posting — min $1 USDC",
         mimeType: "application/json",
-        payTo: "0x4f9e262eeDc57d1AD35e2C2d3264ac460998612A",
+        payTo: RECEIVING_WALLET,
         maxTimeoutSeconds: 300,
         asset: USDC_ADDRESS,
         extra: { name: "USD Coin", version: "2" },
