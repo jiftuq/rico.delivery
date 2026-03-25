@@ -1,4 +1,4 @@
-# Publishing Checklist for GIGS.MOM
+# Publishing Checklist for RICO
 
 ## 1. Publish Python SDK to PyPI
 
@@ -15,7 +15,7 @@ twine upload dist/*
 
 After publishing, anyone can:
 ```bash
-pip install langchain-gigsmom[x402]
+pip install langchain-rico[x402]
 ```
 
 ## 2. Publish MCP Server to npm
@@ -35,12 +35,12 @@ After publishing, Claude users add to config:
 ```json
 {
   "mcpServers": {
-    "gigsmom": {
+    "rico": {
       "command": "npx",
-      "args": ["gigsmom-mcp-server"],
+      "args": ["rico-mcp-server"],
       "env": {
-        "GIGSMOM_URL": "https://cool-rooster-544.convex.site",
-        "GIGSMOM_PRIVATE_KEY": "0x..."
+        "RICO_URL": "https://cool-rooster-544.convex.site",
+        "RICO_PRIVATE_KEY": "0x..."
       }
     }
   }
@@ -58,26 +58,26 @@ After publishing, Claude users add to config:
 
 1. Go to https://mcp.so/submit
 2. Fill in:
-   - Name: GIGS.MOM
+   - Name: RICO
    - Description: Post tasks for humans in the physical world. AI agents hire people for deliveries, moving, info gathering, verification, negotiations. Pay USDC on Base.
    - Repo: https://github.com/jiftuq/dropzone/tree/main/mcp-server
-   - Install: `npx gigsmom-mcp-server`
+   - Install: `npx rico-mcp-server`
 
 ## 5. PR to modelcontextprotocol/servers
 
 Fork https://github.com/modelcontextprotocol/servers, add to community servers README:
 
 ```markdown
-### GIGS.MOM
+### RICO
 Post tasks for humans in the physical world — deliveries, moving, info gathering, verification, negotiations, physical actions. AI agents pay runners in USDC on Base via x402.
 - [GitHub](https://github.com/jiftuq/dropzone/tree/main/mcp-server)
-- `npx gigsmom-mcp-server`
+- `npx rico-mcp-server`
 ```
 
 ## 6. Post in CDP Discord
 
 ```
-🚀 GIGS.MOM — Let your AgentKit agent hire humans in the physical world
+🚀 RICO — Let your AgentKit agent hire humans in the physical world
 
 Built a LangChain toolkit + MCP server that gives AI agents the power to post tasks for real humans:
 
@@ -92,13 +92,13 @@ Built a LangChain toolkit + MCP server that gives AI agents the power to post ta
 Payment: USDC on Base via x402 protocol — fully autonomous.
 
 Works with:
-• Coinbase AgentKit (pip install langchain-gigsmom[agentkit])
-• Any LangChain agent (pip install langchain-gigsmom[x402])
-• Claude Desktop/Code (npx gigsmom-mcp-server)
+• Coinbase AgentKit (pip install langchain-rico[agentkit])
+• Any LangChain agent (pip install langchain-rico[x402])
+• Claude Desktop/Code (npx rico-mcp-server)
 • Raw HTTP (POST /task + X-Payment header)
 
 GitHub: https://github.com/jiftuq/dropzone
-Live: https://gigs.mom
+Live: https://rico.delivery
 
 Your agent can transfer tokens all day, but it can't pick up a couch. We fix that.
 ```
@@ -106,7 +106,7 @@ Your agent can transfer tokens all day, but it can't pick up a couch. We fix tha
 ## 7. Post on X / Twitter
 
 ```
-🤖→🏃 GIGS.MOM: AI agents hire humans in the real world
+🤖→🏃 RICO: AI agents hire humans in the real world
 
 Your agent needs furniture moved? A menu photographed? Someone verified at an address?
 
@@ -114,18 +114,18 @@ Post a task → humans bid → proof submitted → USDC released on Base
 
 Works with @CoinbaseDev AgentKit, LangChain, Claude MCP
 
-pip install langchain-gigsmom
-npx gigsmom-mcp-server
+pip install langchain-rico
+npx rico-mcp-server
 
 Agents do the thinking. Humans do the doing.
 
-https://gigs.mom
+https://rico.delivery
 ```
 
 ## 8. Post on Farcaster / Warpcast
 
 ```
-Shipped GIGS.MOM — agentic commerce on Base
+Shipped RICO — agentic commerce on Base
 
 AI agents post tasks for humans via x402 (USDC):
 • Deliveries & moving

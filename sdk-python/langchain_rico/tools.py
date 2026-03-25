@@ -1,4 +1,4 @@
-"""Individual LangChain tools for GIGS.MOM agentic commerce protocol."""
+"""Individual LangChain tools for RICO agentic commerce protocol."""
 
 import json
 from typing import Optional, List, Type
@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 # ── Input Schemas ──
 
 class WorkflowStep(BaseModel):
-    """A single step in a GIGS.MOM workflow."""
+    """A single step in a RICO workflow."""
     action: str = Field(description="What the runner should do at this step")
     location_addr: Optional[str] = Field(default=None, description="Address for this step")
     location_lat: Optional[float] = Field(default=None, description="Latitude")
@@ -20,7 +20,7 @@ class WorkflowStep(BaseModel):
 
 
 class PostTaskInput(BaseModel):
-    """Input for posting a workflow-based task on GIGS.MOM.
+    """Input for posting a workflow-based task on RICO.
 
     Tasks are workflows: ordered sequences of steps. Each step has an action,
     optional location, proof type, and requirements. The runner completes them in order.
@@ -63,7 +63,7 @@ class PostTaskInput(BaseModel):
     # Pricing
     suggested_fee: float = Field(default=5.0, description="Fee per runner in USDC")
     max_runners: int = Field(default=1, description="Number of runners needed (1-100). Use >1 for moving, flash mobs, cross-validation.")
-    poster_id: str = Field(description="Your Convex user ID (get it by connecting wallet on gigs.mom)")
+    poster_id: str = Field(description="Your Convex user ID (get it by connecting wallet on rico.delivery)")
 
 
 class GetTaskInput(BaseModel):
@@ -96,7 +96,7 @@ class CancelTaskInput(BaseModel):
 # ── Tools ──
 
 class PostTaskTool(BaseTool):
-    """Post a workflow-based task on GIGS.MOM for humans to complete in the physical world.
+    """Post a workflow-based task on RICO for humans to complete in the physical world.
 
     Every task is a workflow: an ordered sequence of steps. Each step has an action,
     optional location, proof requirement, and equipment requirements.
@@ -115,15 +115,15 @@ class PostTaskTool(BaseTool):
     Always prefer using 'steps' to define the workflow rather than flat fields.
     """
 
-    name: str = "gigsmom_post_task"
+    name: str = "rico_post_task"
     description: str = (
-        "Post a workflow-based task on GIGS.MOM for humans to complete in the physical world. "
+        "Post a workflow-based task on RICO for humans to complete in the physical world. "
         "Define the task as a sequence of steps (action, location, proof_type, requirements). "
         "Handles delivery, moving, info gathering, verification, physical actions, and more. "
         "Payment in USDC on Base, escrowed via x402 protocol."
     )
     args_schema: Type[BaseModel] = PostTaskInput
-    client: object = None  # GigsMom instance
+    client: object = None  # Rico instance
 
     def _run(self, **kwargs) -> str:
         # Convert Pydantic WorkflowStep models to dicts
@@ -137,10 +137,10 @@ class PostTaskTool(BaseTool):
 
 
 class ListTasksTool(BaseTool):
-    """List currently open tasks on GIGS.MOM that runners can bid on."""
+    """List currently open tasks on RICO that runners can bid on."""
 
-    name: str = "gigsmom_list_tasks"
-    description: str = "List open tasks on GIGS.MOM. Returns task titles, types, fees, and locations."
+    name: str = "rico_list_tasks"
+    description: str = "List open tasks on RICO. Returns task titles, types, fees, and locations."
     client: object = None
 
     def _run(self) -> str:
@@ -160,10 +160,10 @@ class ListTasksTool(BaseTool):
 
 
 class GetTaskTool(BaseTool):
-    """Get full details of a specific GIGS.MOM task including bids and runner status."""
+    """Get full details of a specific RICO task including bids and runner status."""
 
-    name: str = "gigsmom_get_task"
-    description: str = "Get full details of a GIGS.MOM task by ID, including bids and runner status."
+    name: str = "rico_get_task"
+    description: str = "Get full details of a RICO task by ID, including bids and runner status."
     args_schema: Type[BaseModel] = GetTaskInput
     client: object = None
 
@@ -173,9 +173,9 @@ class GetTaskTool(BaseTool):
 
 
 class AcceptBidTool(BaseTool):
-    """Accept a runner's bid on your GIGS.MOM task."""
+    """Accept a runner's bid on your RICO task."""
 
-    name: str = "gigsmom_accept_bid"
+    name: str = "rico_accept_bid"
     description: str = "Accept a runner's bid on your task. The runner will start working on the task."
     args_schema: Type[BaseModel] = AcceptBidInput
     client: object = None
@@ -188,7 +188,7 @@ class AcceptBidTool(BaseTool):
 class ConfirmDeliveryTool(BaseTool):
     """Confirm a runner completed the task and release USDC payment."""
 
-    name: str = "gigsmom_confirm_delivery"
+    name: str = "rico_confirm_delivery"
     description: str = (
         "Confirm a runner completed the task and release their USDC payment. "
         "For multi-runner tasks, specify the runner_id to confirm individually."
@@ -205,9 +205,9 @@ class ConfirmDeliveryTool(BaseTool):
 
 
 class CancelTaskTool(BaseTool):
-    """Cancel an open GIGS.MOM task and get escrowed USDC refunded."""
+    """Cancel an open RICO task and get escrowed USDC refunded."""
 
-    name: str = "gigsmom_cancel_task"
+    name: str = "rico_cancel_task"
     description: str = "Cancel an open task and get escrowed USDC refunded."
     args_schema: Type[BaseModel] = CancelTaskInput
     client: object = None

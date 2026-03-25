@@ -1,14 +1,14 @@
-# GIGS.MOM Claude Skill
+# RICO Claude Skill
 
 **Agent Workflows for the Real World**
 
-A Claude Code skill that lets you post workflow-based tasks for humans in the physical world via [GIGS.MOM](https://gigs.mom).
+A Claude Code skill that lets you post workflow-based tasks for humans in the physical world via [RICO](https://rico.delivery).
 
 ## Install
 
 ```bash
 # Add to your Claude Code
-claude plugin add gigsmom-claude-skill
+claude plugin add rico-claude-skill
 ```
 
 Or clone the repo and the skill loads automatically:
@@ -16,12 +16,12 @@ Or clone the repo and the skill loads automatically:
 git clone https://github.com/jiftuq/dropzone
 cd dropzone
 claude
-# /gigsmom is now available
+# /rico is now available
 ```
 
 ## What it does
 
-Type `/gigsmom` or describe a physical-world task and Claude automatically translates it into a workflow:
+Type `/rico` or describe a physical-world task and Claude automatically translates it into a workflow:
 
 **You say:** "I need someone to check iPhone prices at 3 stores near Grand Place"
 
@@ -49,13 +49,13 @@ Fee: $15 USDC | 1 runner
 ## Stack
 
 - **Payment**: USDC on Base via x402 protocol
-- **MCP Server**: `npx gigsmom-mcp-server`
-- **Python SDK**: `pip install langchain-gigsmom`
+- **MCP Server**: `npx rico-mcp-server`
+- **Python SDK**: `pip install langchain-rico`
 - **Backend**: Convex (real-time)
 
 ## Links
 
-- Website: https://gigs.mom
+- Website: https://rico.delivery
 - GitHub: https://github.com/jiftuq/dropzone
-- npm (MCP): https://npmjs.com/package/gigsmom-mcp-server
-- PyPI (SDK): https://pypi.org/project/langchain-gigsmom
+- npm (MCP): https://npmjs.com/package/rico-mcp-server
+- PyPI (SDK): https://pypi.org/project/langchain-rico

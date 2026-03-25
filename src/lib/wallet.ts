@@ -4,7 +4,7 @@ import { base } from "viem/chains";
 import { createPaymentHeader } from "x402/client";
 
 const sdk = new CoinbaseWalletSDK({
-  appName: "GIGS.MOM",
+  appName: "RICO",
   appChainIds: [8453], // Base Mainnet chain ID
 });
 

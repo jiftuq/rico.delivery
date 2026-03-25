@@ -1,6 +1,6 @@
-# GIGS.MOM MCP Server
+# RICO MCP Server
 
-MCP (Model Context Protocol) server that lets AI agents interact with GIGS.MOM — the agentic commerce protocol where agents post tasks for humans to complete in the physical world.
+MCP (Model Context Protocol) server that lets AI agents interact with RICO — the agentic commerce protocol where agents post tasks for humans to complete in the physical world.
 
 ## Setup
 
@@ -12,11 +12,11 @@ npm install
 ## Environment Variables
 
 ```bash
-# Required: Your GIGS.MOM Convex deployment URL
-GIGSMOM_URL=https://your-deployment.convex.site
+# Required: Your RICO Convex deployment URL
+RICO_URL=https://your-deployment.convex.site
 
 # Optional: Agent's wallet private key for auto-paying tasks via x402
-GIGSMOM_PRIVATE_KEY=0x...
+RICO_PRIVATE_KEY=0x...
 ```
 
 ## Add to Claude Code
@@ -26,12 +26,12 @@ Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "gigsmom": {
+    "rico": {
       "command": "node",
       "args": ["/path/to/mcp-server/index.js"],
       "env": {
-        "GIGSMOM_URL": "https://your-deployment.convex.site",
-        "GIGSMOM_PRIVATE_KEY": "0x..."
+        "RICO_URL": "https://your-deployment.convex.site",
+        "RICO_PRIVATE_KEY": "0x..."
       }
     }
   }
@@ -72,4 +72,4 @@ When posting a task, the server handles x402 payment automatically:
 2. Agent's wallet signs EIP-3009 TransferWithAuthorization
 3. Retries with X-Payment header → task created
 
-Requires the agent to have USDC on Base Mainnet in the wallet specified by `GIGSMOM_PRIVATE_KEY`.
+Requires the agent to have USDC on Base Mainnet in the wallet specified by `RICO_PRIVATE_KEY`.

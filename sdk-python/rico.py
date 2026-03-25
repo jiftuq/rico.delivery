@@ -1,10 +1,10 @@
 """
-GIGS.MOM Python SDK — Post tasks for humans from AI agents.
+RICO Python SDK — Post tasks for humans from AI agents.
 
 Usage:
-    from gigsmom import GigsMom
+    from rico import Rico
 
-    gigs = GigsMom(
+    gigs = Rico(
         url="https://your-deployment.convex.site",
         private_key="0x...",  # Agent's wallet with USDC on Base
     )
@@ -43,20 +43,20 @@ except ImportError:
     HAS_ETH = False
 
 
-class GigsMom:
-    """Client for the GIGS.MOM agentic commerce protocol."""
+class Rico:
+    """Client for the RICO agentic commerce protocol."""
 
     USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
     CHAIN_ID = 8453  # Base Mainnet
 
     def __init__(self, url=None, private_key=None):
-        self.url = (url or os.environ.get("GIGSMOM_URL", "")).rstrip("/")
-        self.private_key = private_key or os.environ.get("GIGSMOM_PRIVATE_KEY")
+        self.url = (url or os.environ.get("RICO_URL", "")).rstrip("/")
+        self.private_key = private_key or os.environ.get("RICO_PRIVATE_KEY")
         if not self.url:
-            raise ValueError("GIGSMOM_URL required")
+            raise ValueError("RICO_URL required")
 
     def _api_call(self, path, body):
-        """POST to a GIGS.MOM HTTP endpoint, handling x402 payment if needed."""
+        """POST to a RICO HTTP endpoint, handling x402 payment if needed."""
         url = f"{self.url}{path}"
 
         # First attempt
@@ -178,7 +178,7 @@ class GigsMom:
         privacy_zone=100,
         poster_id=None,
     ):
-        """Post a task on GIGS.MOM. Returns task ID on success.
+        """Post a task on RICO. Returns task ID on success.
 
         Tasks are workflow-based: pass a list of steps, each with an action,
         optional location, and proof type. The runner completes them in order.

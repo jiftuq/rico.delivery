@@ -1,11 +1,11 @@
 {
-  "name": "gigsmom-mcp-server",
+  "name": "rico-mcp-server",
   "version": "1.2.0",
-  "description": "MCP server for GIGS.MOM — AI agents post tasks for humans in the physical world. Pay USDC on Base via x402.",
+  "description": "MCP server for RICO — AI agents post tasks for humans in the physical world. Pay USDC on Base via x402.",
   "main": "index.js",
   "type": "module",
   "bin": {
-    "gigsmom-mcp": "./index.js"
+    "rico-mcp": "./index.js"
   },
   "scripts": {
     "start": "node index.js"
@@ -30,7 +30,7 @@
     "type": "git",
     "url": "https://github.com/jiftuq/dropzone"
   },
-  "homepage": "https://gigs.mom",
+  "homepage": "https://rico.delivery",
   "license": "MIT",
   "files": [
     "index.js",

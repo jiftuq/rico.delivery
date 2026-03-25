@@ -65,7 +65,7 @@ const postTask = httpAction(async (ctx, request) => {
 
   const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
   const resource = new URL("/task", request.url).toString();
-  const requirements = buildRequirements(totalUSDC, resource, `GIGS.MOM task: $${totalUSDC.toFixed(2)} USDC`, receivingWallet);
+  const requirements = buildRequirements(totalUSDC, resource, `RICO task: $${totalUSDC.toFixed(2)} USDC`, receivingWallet);
 
   const paymentHeader = request.headers.get("X-Payment");
   if (!paymentHeader) return send402(requirements, origin);
@@ -116,7 +116,7 @@ const acceptBid = httpAction(async (ctx, request) => {
     if (diff > 0.001) {
       const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
       const resource = new URL("/accept-bid", request.url).toString();
-      const requirements = buildRequirements(diff, resource, `GIGS.MOM extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
+      const requirements = buildRequirements(diff, resource, `RICO extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
       const paymentHeader = request.headers.get("X-Payment");
       if (!paymentHeader) return send402(requirements, origin);
       const result: any = await ctx.runAction(internal.payments.verifyX402, {
@@ -305,7 +305,7 @@ const openapi = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const spec = {
     openapi: "3.1.0",
-    info: { title: "GIGS.MOM — Agent Workflows for the Real World", version: "1.1.0",
+    info: { title: "RICO — Agent Workflows for the Real World", version: "1.1.0",
       description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base." },
     servers: [{ url: "https://cool-rooster-544.convex.site" }],
     paths: {
@@ -356,7 +356,7 @@ const taskDiscover = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
   const resource = new URL("/task", request.url).toString();
-  const requirements = buildRequirements(1.00, resource, "GIGS.MOM — Post workflow tasks for humans. Min $1 USDC.", receivingWallet);
+  const requirements = buildRequirements(1.00, resource, "RICO — Post workflow tasks for humans. Min $1 USDC.", receivingWallet);
   return send402(requirements, origin);
 });
 

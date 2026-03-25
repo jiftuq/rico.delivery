@@ -1,7 +1,7 @@
-"""LangChain toolkit for GIGS.MOM — works with Coinbase AgentKit and any LangChain agent."""
+"""LangChain toolkit for RICO — works with Coinbase AgentKit and any LangChain agent."""
 
-from langchain_gigsmom.toolkit import GigsMomToolkit
-from langchain_gigsmom.tools import (
+from langchain_rico.toolkit import RicoToolkit
+from langchain_rico.tools import (
     PostTaskTool,
     ListTasksTool,
     GetTaskTool,
@@ -11,7 +11,7 @@ from langchain_gigsmom.tools import (
 )
 
 __all__ = [
-    "GigsMomToolkit",
+    "RicoToolkit",
     "PostTaskTool",
     "ListTasksTool",
     "GetTaskTool",

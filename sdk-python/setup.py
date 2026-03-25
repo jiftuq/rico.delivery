@@ -1,12 +1,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="langchain-gigsmom",
+    name="langchain-rico",
     version="0.2.0",
-    description="LangChain toolkit for GIGS.MOM — let AI agents post tasks for humans in the physical world",
+    description="LangChain toolkit for RICO — let AI agents post tasks for humans in the physical world",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    author="GIGS.MOM",
+    author="RICO",
     url="https://github.com/jiftuq/dropzone",
     packages=find_packages(),
     python_requires=">=3.9",

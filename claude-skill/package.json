@@ -1,7 +1,7 @@
 {
-  "name": "gigsmom-claude-skill",
+  "name": "rico-claude-skill",
   "version": "1.0.0",
-  "description": "Claude Code skill for GIGS.MOM — post workflow-based tasks for humans in the physical world. Deliveries, moving, info gathering, verification, and more. USDC on Base.",
+  "description": "Claude Code skill for RICO — post workflow-based tasks for humans in the physical world. Deliveries, moving, info gathering, verification, and more. USDC on Base.",
   "keywords": [
     "claude-code",
     "claude-skill",
@@ -20,10 +20,10 @@
     "type": "git",
     "url": "https://github.com/jiftuq/dropzone"
   },
-  "homepage": "https://gigs.mom",
+  "homepage": "https://rico.delivery",
   "license": "MIT",
   "files": [
-    "skills/gigsmom/SKILL.md",
+    "skills/rico/SKILL.md",
     "README.md"
   ]
 }

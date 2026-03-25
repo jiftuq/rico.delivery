@@ -1,16 +1,16 @@
 """
-Example agent workflows using the GIGS.MOM Python SDK.
+Example agent workflows using the RICO Python SDK.
 Each example shows how an AI agent would use the protocol.
 """
 
-from gigsmom import GigsMom
+from rico import Rico
 
-gigs = GigsMom(
+gigs = Rico(
     url="https://your-deployment.convex.site",
     private_key="0x...",  # Fund this wallet with USDC on Base
 )
 
-POSTER_ID = "your_convex_user_id"  # Get this by connecting wallet on gigs.mom
+POSTER_ID = "your_convex_user_id"  # Get this by connecting wallet on rico.delivery
 
 
 # ── 1. Shopping Agent ──

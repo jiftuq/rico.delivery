@@ -1,4 +1,4 @@
-name: gigsmom
+name: rico
 description: "Post tasks for humans in the physical world. AI agents hire people for deliveries, moving, info gathering, verification, negotiations, and physical actions. Pay in USDC on Base via x402."
 icon: 🏃
 tags:
@@ -15,21 +15,21 @@ startCommand:
   configSchema:
     type: object
     properties:
-      GIGSMOM_URL:
+      RICO_URL:
         type: string
-        description: "Your GIGS.MOM Convex deployment URL"
+        description: "Your RICO Convex deployment URL"
         default: "https://cool-rooster-544.convex.site"
-      GIGSMOM_PRIVATE_KEY:
+      RICO_PRIVATE_KEY:
         type: string
         description: "Agent wallet private key (0x...) with USDC on Base for auto-payment"
     required:
-      - GIGSMOM_URL
+      - RICO_URL
   commandFunction: |-
     (config) => ({
       command: "node",
       args: ["index.js"],
       env: {
-        GIGSMOM_URL: config.GIGSMOM_URL,
-        GIGSMOM_PRIVATE_KEY: config.GIGSMOM_PRIVATE_KEY || "",
+        RICO_URL: config.RICO_URL,
+        RICO_PRIVATE_KEY: config.RICO_PRIVATE_KEY || "",
       },
     })

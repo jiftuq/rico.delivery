@@ -1,5 +1,5 @@
 """
-Example: Plain LangChain agent with GIGS.MOM workflow tools (no AgentKit needed).
+Example: Plain LangChain agent with RICO workflow tools (no AgentKit needed).
 
 This works with any LLM and doesn't require Coinbase AgentKit.
 The agent's wallet private key handles x402 USDC payments directly.
@@ -7,20 +7,20 @@ The agent's wallet private key handles x402 USDC payments directly.
 Every task is a workflow: ordered steps with actions, locations, and proof types.
 
 Requirements:
-    pip install langchain-gigsmom[langchain,x402]
+    pip install langchain-rico[langchain,x402]
 
 Environment:
     OPENAI_API_KEY=sk-...
-    GIGSMOM_URL=https://your-deployment.convex.site
-    GIGSMOM_PRIVATE_KEY=0x...  (wallet with USDC on Base)
+    RICO_URL=https://your-deployment.convex.site
+    RICO_PRIVATE_KEY=0x...  (wallet with USDC on Base)
 """
 
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from langchain_gigsmom import GigsMomToolkit
+from langchain_rico import RicoToolkit
 
 # Setup
-toolkit = GigsMomToolkit()  # reads from env vars
+toolkit = RicoToolkit()  # reads from env vars
 tools = toolkit.get_tools()
 llm = ChatOpenAI(model="gpt-4o")
 
@@ -28,8 +28,8 @@ agent = create_react_agent(
     llm,
     tools=tools,
     prompt=(
-        "You are an AI agent that can post workflow-based tasks for humans via GIGS.MOM. "
-        "GIGS.MOM is your physical execution layer — when you need something done in the "
+        "You are an AI agent that can post workflow-based tasks for humans via RICO. "
+        "RICO is your physical execution layer — when you need something done in the "
         "real world, you define a workflow as a sequence of steps.\n\n"
         "Each step: {action, location_addr, proof_type, requirements}\n"
         "Proof types: photo, video, text, gps, none\n"

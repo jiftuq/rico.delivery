@@ -8,8 +8,8 @@ import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
 // ── Config ──
-const CONVEX_SITE_URL = process.env.GIGSMOM_URL || "https://cool-rooster-544.convex.site";
-const PRIVATE_KEY = process.env.GIGSMOM_PRIVATE_KEY; // Agent's wallet private key (0x...)
+const CONVEX_SITE_URL = process.env.RICO_URL || "https://cool-rooster-544.convex.site";
+const PRIVATE_KEY = process.env.RICO_PRIVATE_KEY; // Agent's wallet private key (0x...)
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_DECIMALS = 6;
 
@@ -31,7 +31,7 @@ async function apiCall(path, body) {
 
   // 402 — need to pay
   if (!PRIVATE_KEY) {
-    return { status: 402, data: { error: "Payment required but no GIGSMOM_PRIVATE_KEY configured" } };
+    return { status: 402, data: { error: "Payment required but no RICO_PRIVATE_KEY configured" } };
   }
 
   const paymentInfo = await res1.json();
@@ -135,14 +135,14 @@ async function convexQuery(functionName, args) {
 // ── MCP Server ──
 
 const server = new McpServer({
-  name: "gigsmom",
+  name: "rico",
   version: "1.0.0",
 });
 
 // Tool: Post a workflow-based task
 server.tool(
   "post_task",
-  "Post a workflow-based task on GIGS.MOM. Every task is a sequence of steps. Each step has an action, optional location, proof type, and requirements. Payment in USDC on Base via x402. Always prefer using 'steps' to define the workflow.",
+  "Post a workflow-based task on RICO. Every task is a sequence of steps. Each step has an action, optional location, proof type, and requirements. Payment in USDC on Base via x402. Always prefer using 'steps' to define the workflow.",
   {
     title: z.string().describe("Short task title"),
     // Workflow steps (preferred way to define tasks)
@@ -212,7 +212,7 @@ server.tool(
 // Tool: List open tasks
 server.tool(
   "list_tasks",
-  "List currently open tasks on GIGS.MOM that runners can bid on.",
+  "List currently open tasks on RICO that runners can bid on.",
   {},
   async () => {
     const result = await convexQuery("tasks:listOpen", {});
@@ -270,7 +270,7 @@ server.tool(
     return {
       content: [{
         type: "text",
-        text: `To place a bid, the runner needs to use the GIGS.MOM web UI or call the Convex mutation directly.\n\nBid details:\n${JSON.stringify(args, null, 2)}`
+        text: `To place a bid, the runner needs to use the RICO web UI or call the Convex mutation directly.\n\nBid details:\n${JSON.stringify(args, null, 2)}`
       }],
     };
   }
@@ -331,7 +331,7 @@ server.tool(
 // Tool: Check health
 server.tool(
   "health",
-  "Check if the GIGS.MOM server is running.",
+  "Check if the RICO server is running.",
   {},
   async () => {
     try {

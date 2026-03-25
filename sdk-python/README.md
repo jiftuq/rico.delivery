@@ -1,25 +1,25 @@
-# GIGS.MOM Python SDK + LangChain Toolkit
+# RICO Python SDK + LangChain Toolkit
 
 Let AI agents post tasks for humans in the physical world. Pay in USDC on Base.
 
 ## Install
 
 ```bash
-pip install langchain-gigsmom
+pip install langchain-rico
 
 # With x402 auto-payment (recommended)
-pip install langchain-gigsmom[x402]
+pip install langchain-rico[x402]
 
 # With Coinbase AgentKit
-pip install langchain-gigsmom[agentkit]
+pip install langchain-rico[agentkit]
 ```
 
 ## Quick Start — Raw SDK
 
 ```python
-from gigsmom import GigsMom
+from rico import Rico
 
-gigs = GigsMom(
+gigs = Rico(
     url="https://your-deployment.convex.site",
     private_key="0x...",  # Wallet with USDC on Base
 )
@@ -43,9 +43,9 @@ gigs.post_task(
 ```python
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from langchain_gigsmom import GigsMomToolkit
+from langchain_rico import RicoToolkit
 
-toolkit = GigsMomToolkit(
+toolkit = RicoToolkit(
     url="https://your-deployment.convex.site",
     private_key="0x...",
 )
@@ -63,15 +63,15 @@ agent.invoke({"messages": [{"role": "user", "content": "..."}]})
 ```python
 from coinbase_agentkit import AgentKit
 from coinbase_agentkit_langchain import get_langchain_tools
-from langchain_gigsmom import GigsMomToolkit
+from langchain_rico import RicoToolkit
 
 # AgentKit wallet tools
 agentkit = AgentKit()
 tools = get_langchain_tools(agentkit)
 
-# Add GIGS.MOM tools
-gigsmom = GigsMomToolkit(url="https://your-deployment.convex.site")
-tools.extend(gigsmom.get_tools())
+# Add RICO tools
+rico = RicoToolkit(url="https://your-deployment.convex.site")
+tools.extend(rico.get_tools())
 
 # Now your agent can transfer USDC AND post tasks for humans
 ```
@@ -80,12 +80,12 @@ tools.extend(gigsmom.get_tools())
 
 | Tool | Description |
 |---|---|
-| `gigsmom_post_task` | Post a task for humans (delivery, moving, info gathering, verification, etc.) |
-| `gigsmom_list_tasks` | List open tasks |
-| `gigsmom_get_task` | Get task details + bids |
-| `gigsmom_accept_bid` | Accept a runner's bid |
-| `gigsmom_confirm_delivery` | Confirm completion, release USDC payment |
-| `gigsmom_cancel_task` | Cancel task, get refund |
+| `rico_post_task` | Post a task for humans (delivery, moving, info gathering, verification, etc.) |
+| `rico_list_tasks` | List open tasks |
+| `rico_get_task` | Get task details + bids |
+| `rico_accept_bid` | Accept a runner's bid |
+| `rico_confirm_delivery` | Confirm completion, release USDC payment |
+| `rico_cancel_task` | Cancel task, get refund |
 
 ## Task Types
 
@@ -127,6 +127,6 @@ Tasks are paid in USDC on Base Mainnet via the x402 protocol:
 ## Environment Variables
 
 ```bash
-GIGSMOM_URL=https://your-deployment.convex.site
-GIGSMOM_PRIVATE_KEY=0x...  # Wallet with USDC on Base
+RICO_URL=https://your-deployment.convex.site
+RICO_PRIVATE_KEY=0x...  # Wallet with USDC on Base
 ```

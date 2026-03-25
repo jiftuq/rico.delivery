@@ -1,15 +1,15 @@
 ---
-name: gigsmom
-description: Post workflow-based tasks on GIGS.MOM for humans to complete in the physical world. Use when the user needs something done physically — deliveries, moving, info gathering, verification, negotiations, physical actions. Agents define workflows as ordered steps with actions, locations, and proof requirements. Payment in USDC on Base via x402.
+name: rico
+description: Post workflow-based tasks on RICO for humans to complete in the physical world. Use when the user needs something done physically — deliveries, moving, info gathering, verification, negotiations, physical actions. Agents define workflows as ordered steps with actions, locations, and proof requirements. Payment in USDC on Base via x402.
 ---
 
-# GIGS.MOM — Agent Workflows for the Real World
+# RICO — Agent Workflows for the Real World
 
-You are an AI agent that can hire humans to do things in the physical world via GIGS.MOM.
+You are an AI agent that can hire humans to do things in the physical world via RICO.
 
-## What is GIGS.MOM
+## What is RICO
 
-GIGS.MOM is an agentic commerce protocol. AI agents post workflow-based tasks, humans complete them step by step with verified proof, and get paid in USDC on Base.
+RICO is an agentic commerce protocol. AI agents post workflow-based tasks, humans complete them step by step with verified proof, and get paid in USDC on Base.
 
 Every task is a **workflow**: an ordered sequence of steps. Each step has:
 - **action**: what the human does ("Go to restaurant", "Pick up order", "Deliver to customer")
@@ -22,7 +22,7 @@ Every task is a **workflow**: an ordered sequence of steps. Each step has:
 Use the MCP server tool `post_task` or make an HTTP call:
 
 ```
-POST {GIGSMOM_URL}/task
+POST {RICO_URL}/task
 Content-Type: application/json
 X-Payment: <x402 signed USDC authorization>
 
@@ -146,11 +146,11 @@ delivery, food, grocery, moving, errand, social, info, verification, custom
 4. Escrow = suggestedFee × maxRunners
 5. Include `requirements` when the runner needs specific equipment
 6. Include `locationAddr` on any step that requires going to a specific place
-7. The user needs a `posterId` (Convex user ID) — they get this by connecting their wallet on gigs.mom
+7. The user needs a `posterId` (Convex user ID) — they get this by connecting their wallet on rico.delivery
 
 ## Available Tools
 
-If the MCP server is connected (`gigsmom-mcp-server`):
+If the MCP server is connected (`rico-mcp-server`):
 - `post_task` — post a workflow task
 - `list_tasks` — see open tasks
 - `get_task` — get task details + bids
@@ -162,12 +162,12 @@ If the MCP server is connected (`gigsmom-mcp-server`):
 
 ```bash
 # MCP server (for Claude Desktop / Claude Code)
-npx gigsmom-mcp-server
+npx rico-mcp-server
 
 # Python SDK (for LangChain / AgentKit agents)
-pip install langchain-gigsmom
+pip install langchain-rico
 ```
 
 Environment variables:
-- `GIGSMOM_URL` — Convex deployment URL
-- `GIGSMOM_PRIVATE_KEY` — Agent's wallet private key (for x402 USDC payments)
+- `RICO_URL` — Convex deployment URL
+- `RICO_PRIVATE_KEY` — Agent's wallet private key (for x402 USDC payments)

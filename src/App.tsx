@@ -350,7 +350,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           {bids.length===0&&<div style={S.empty}>{t("no_bids")}</div>}
           {isOwner&&<div style={{display:"flex",gap:6,marginTop:8}}>
             <button style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,71,87,0.2)",background:"rgba(255,71,87,0.04)",color:"#ff4757",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={doCancel}>✕ {t("cancel_task")} · {t("refund")} ${total.toFixed(2)}</button>
-            <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i||"⚡"} ${task.category}${isDel?` · ${t("pickup_lbl")}: ${task.pickupAddr}`:` · ${t("location_lbl")}: ${locAddr}`}\n${isDel?t("delivery_lbl"):t("runner_fee")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`GIGS.MOM: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
+            <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i||"⚡"} ${task.category}${isDel?` · ${t("pickup_lbl")}: ${task.pickupAddr}`:` · ${t("location_lbl")}: ${locAddr}`}\n${isDel?t("delivery_lbl"):t("runner_fee")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`RICO: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
           </div>}
           {!isOwner&&userId&&userLoc&&<div style={{marginTop:10,padding:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12}}>
             <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>{t("place_bid")}</div>
@@ -733,8 +733,8 @@ function HowView(){
     {i:"💰",t:"USDC Settles",d:"Escrow locks funds. Proof confirms. Payment releases. No trust needed.",c:"#00b4ff"},
   ];
   const integrations=[
-    {i:"🔌",t:"MCP Server",d:"Claude, GPT, and any MCP-compatible agent can discover and use GIGS.MOM natively.",tag:"npm: gigsmom-mcp-server",c:"#a855f7"},
-    {i:"🐍",t:"Python SDK",d:"LangChain toolkit + Coinbase AgentKit integration. pip install and go.",tag:"pip: langchain-gigsmom",c:"#00ff87"},
+    {i:"🔌",t:"MCP Server",d:"Claude, GPT, and any MCP-compatible agent can discover and use RICO natively.",tag:"npm: rico-mcp-server",c:"#a855f7"},
+    {i:"🐍",t:"Python SDK",d:"LangChain toolkit + Coinbase AgentKit integration. pip install and go.",tag:"pip: langchain-rico",c:"#00ff87"},
     {i:"💳",t:"x402 Protocol",d:"HTTP 402 payment flow. Agent sends request, signs USDC, task is created. No API keys.",tag:"Base Mainnet · USDC",c:"#0052ff"},
     {i:"📡",t:"Real-time API",d:"Convex-powered backend. Live bid updates, GPS tracking, chat, proof uploads — all real-time.",tag:"WebSocket",c:"#ffd000"},
   ];
@@ -743,7 +743,7 @@ function HowView(){
     <div style={{textAlign:"center",padding:"20px 0 10px"}}>
       <div style={{fontSize:11,fontWeight:600,letterSpacing:3,color:"#a855f7",textTransform:"uppercase",marginBottom:10}}>Agent Workflows for the Real World</div>
       <h1 style={{fontSize:32,fontWeight:800,color:"#fff",lineHeight:1.2,margin:"0 0 12px",background:"linear-gradient(135deg,#00ff87,#00b4ff,#a855f7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AI agents can't open doors.<br/>Humans can.</h1>
-      <div style={{fontSize:14,color:"#777",lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>GIGS.MOM is the physical execution layer for AI. Agents post workflow-based tasks, humans complete them step by step with verified proof, and get paid in USDC.</div>
+      <div style={{fontSize:14,color:"#777",lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>RICO is the physical execution layer for AI. Agents post workflow-based tasks, humans complete them step by step with verified proof, and get paid in USDC.</div>
     </div>
 
     {/* Live stats */}
@@ -839,10 +839,10 @@ function HowView(){
     {/* Bottom CTA */}
     <div style={{textAlign:"center",padding:"24px 0 10px",borderTop:"1px solid rgba(255,255,255,0.03)",marginTop:20}}>
       <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:8}}>The world is the agent's API.</div>
-      <div style={{fontSize:12,color:"#555",marginBottom:16}}>Every physical action an AI can't do — GIGS.MOM can.</div>
+      <div style={{fontSize:12,color:"#555",marginBottom:16}}>Every physical action an AI can't do — RICO can.</div>
       <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>npm i gigsmom-mcp-server</div>
-        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>pip install langchain-gigsmom</div>
+        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>npm i rico-mcp-server</div>
+        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>pip install langchain-rico</div>
       </div>
     </div>
   </div>;
@@ -864,7 +864,7 @@ export default function App(){
   <div style={{minHeight:"100vh",background:"#0b0c12",color:"#bbb",fontFamily:"'Outfit',sans-serif"}}><style>{CSS}</style>
     <header style={{position:"sticky",top:0,zIndex:1000,background:"rgba(11,12,18,0.92)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(255,255,255,0.03)"}}>
       <div style={{maxWidth:1120,margin:"0 auto",padding:"0 12px",height:54,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setView("home")}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#00ff87,#00b4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#000",fontWeight:800}}>◆</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#fff",letterSpacing:2}}>GIGS.MOM</div></div>
+        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setView("home")}><div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#00ff87,#00b4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:"#000",fontWeight:800}}>◆</div><div style={{fontFamily:"monospace",fontWeight:700,fontSize:14,color:"#fff",letterSpacing:2}}>RICO</div></div>
         <nav className="dz-header-nav">{NAV.map(n=><button key={n.id} onClick={()=>setView(n.id)} style={{...S.navBtn,...(view===n.id?S.navAct:{})}}>{translate(n.lk)}</button>)}</nav>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{position:"relative"}}>

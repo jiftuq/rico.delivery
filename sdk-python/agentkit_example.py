@@ -1,19 +1,19 @@
 """
-Example: Coinbase AgentKit agent with GIGS.MOM workflow tools.
+Example: Coinbase AgentKit agent with RICO workflow tools.
 
 This agent has a wallet on Base (USDC) AND can post workflow-based tasks
-for humans in the physical world via GIGS.MOM.
+for humans in the physical world via RICO.
 
 Every task is a workflow: an ordered sequence of steps with actions,
 locations, proof requirements, and equipment needs.
 
 Requirements:
     pip install coinbase-agentkit coinbase-agentkit-langchain langchain-openai
-    pip install langchain-gigsmom[agentkit]
+    pip install langchain-rico[agentkit]
 
 Environment:
     OPENAI_API_KEY=sk-...
-    GIGSMOM_URL=https://your-deployment.convex.site
+    RICO_URL=https://your-deployment.convex.site
     CDP_API_KEY_NAME=...
     CDP_API_KEY_PRIVATE_KEY=...
 """
@@ -31,16 +31,16 @@ agentkit = AgentKit(AgentKitConfig(
 ))
 wallet_tools = get_langchain_tools(agentkit)
 
-# ── 2. GIGS.MOM tools (post workflow tasks for humans) ──
-from langchain_gigsmom import GigsMomToolkit
+# ── 2. RICO tools (post workflow tasks for humans) ──
+from langchain_rico import RicoToolkit
 
-gigsmom = GigsMomToolkit(
-    url=os.environ.get("GIGSMOM_URL", "https://your-deployment.convex.site"),
+rico = RicoToolkit(
+    url=os.environ.get("RICO_URL", "https://your-deployment.convex.site"),
 )
-gigsmom_tools = gigsmom.get_tools()
+rico_tools = rico.get_tools()
 
 # ── 3. Combine all tools ──
-all_tools = wallet_tools + gigsmom_tools
+all_tools = wallet_tools + rico_tools
 
 # ── 4. Create the agent ──
 llm = ChatOpenAI(model="gpt-4o")
@@ -50,8 +50,8 @@ agent = create_react_agent(
     tools=all_tools,
     prompt=(
         "You are an AI agent with a crypto wallet on Base and the ability to "
-        "post workflow-based tasks for humans in the physical world via GIGS.MOM.\n\n"
-        "GIGS.MOM is your physical execution layer. When you need something done "
+        "post workflow-based tasks for humans in the physical world via RICO.\n\n"
+        "RICO is your physical execution layer. When you need something done "
         "in the real world, you define a workflow: an ordered sequence of steps.\n\n"
         "Each step has:\n"
         "- action: what the human does (e.g. 'Go to restaurant', 'Pick up order')\n"
