@@ -69,7 +69,7 @@ function buildRequirements(totalUSDC: number, resource: string, description: str
     payTo: RECEIVING_WALLET,
     maxTimeoutSeconds: 300,
     asset: USDC_ADDRESS,
-    extra: { name: "INCITE", version: "1" },
+    extra: { name: "RICO", version: "1" },
   };
 }
 
@@ -133,7 +133,7 @@ app.post("/task", async (req: Request, res: Response) => {
   const totalUSDC = Math.max(itemCost + suggestedFee, 0.01);
 
   const resource = `${req.protocol}://${req.get("host")}/task`;
-  const requirements = buildRequirements(totalUSDC, resource, `INCITE task: $${totalUSDC.toFixed(2)} USDC`);
+  const requirements = buildRequirements(totalUSDC, resource, `RICO task: $${totalUSDC.toFixed(2)} USDC`);
 
   const paymentHeader = req.headers["x-payment"] as string | undefined;
   if (!paymentHeader) return send402(res, requirements);
@@ -174,7 +174,7 @@ app.post("/accept-bid", async (req: Request, res: Response) => {
   // Courier bid higher → poster pays the difference via x402
   if (diff > 0.001) {
     const resource = `${req.protocol}://${req.get("host")}/accept-bid`;
-    const requirements = buildRequirements(diff, resource, `INCITE extra fee: $${diff.toFixed(2)} USDC`);
+    const requirements = buildRequirements(diff, resource, `RICO extra fee: $${diff.toFixed(2)} USDC`);
     const paymentHeader = req.headers["x-payment"] as string | undefined;
     if (!paymentHeader) return send402(res, requirements);
     const ok = await verifyAndSettle(paymentHeader, requirements, res);
@@ -348,7 +348,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 const PORT = process.env.SERVER_PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`INCITE payment server :${PORT}`);
+  console.log(`RICO payment server :${PORT}`);
   console.log(`Platform wallet: ${account.address}`);
   // Run once on startup
   processRefunds();

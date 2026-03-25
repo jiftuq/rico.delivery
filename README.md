@@ -1,6 +1,6 @@
-# INCITE — Full-Stack P2P Delivery Platform
+# RICO — Full-Stack P2P Delivery Platform
 
-React + Convex + Leaflet + INCITE Token
+React + Convex + Leaflet + RICO Token
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ npm run dev:frontend
 ## What Happens on First Visit
 
 1. Browser auto-generates a wallet address
-2. Convex `users.getOrCreate` creates the user with 50 INCITE airdrop
+2. Convex `users.getOrCreate` creates the user with 50 RICO airdrop
 3. GPS location is requested
 4. User sees live tasks and can post/bid immediately
 
@@ -33,7 +33,7 @@ src/
 ├── main.tsx              # Entry point, ConvexProvider wrapper
 ├── App.tsx               # All views: tasks, post, wallet, chat, ratings, maps
 ├── hooks/
-│   └── useIncite.ts      # All Convex hooks: useUser, useTasks, useChat, etc.
+│   └── useRico.ts        # All Convex hooks: useUser, useTasks, useChat, etc.
 └── lib/
     └── utils.ts          # Privacy zones, haversine, OSRM routing, constants
 
@@ -48,7 +48,7 @@ convex/
 ## Features
 
 - **Auto-wallet** — no signup, wallet created on first visit
-- **50 INCITE airdrop** — instant balance for new users  
+- **50 RICO airdrop** — instant balance for new users  
 - **Post tasks** — item cost + delivery fee, privacy zone selector
 - **Courier bidding** — GPS required, trip km calculated, reputation shown
 - **Poster picks courier** — choose by price, distance, rating, reviews
