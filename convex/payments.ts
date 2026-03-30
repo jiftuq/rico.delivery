@@ -264,7 +264,7 @@ function recoverAddress(msgHash: Uint8Array, signature: string): string {
     const vByte = parseInt(sigHex.slice(128, 130), 16);
     const recovery = vByte >= 27 ? vByte - 27 : vByte;
     const sig = new secp256k1.Signature(r, s).addRecoveryBit(recovery);
-    const pubKey = sig.recoverPublicKey(msgHash).toRawBytes(false);
+    const pubKey = sig.recoverPublicKey(msgHash).toBytes(false);
     const addrHash = keccak_256(pubKey.slice(1));
     return "0x" + bytesToHex(addrHash.slice(12));
   }
