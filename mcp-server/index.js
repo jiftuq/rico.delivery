@@ -344,6 +344,117 @@ server.tool(
   }
 );
 
+// Tool: Wait for bids on a task (SSE subscription)
+server.tool(
+  "wait_for_bids",
+  "Subscribe to a task and wait for runners to place bids. Returns when at least one new bid arrives or after timeout. Use this after posting a task to watch for incoming bids.",
+  {
+    taskId: z.string().describe("Task ID to watch for bids"),
+    timeoutSeconds: z.number().optional().describe("How long to wait (default 60, max 90)"),
+  },
+  async ({ taskId, timeoutSeconds }) => {
+    const timeout = Math.min(timeoutSeconds || 60, 90) * 1000;
+    const url = `${CONVEX_SITE_URL}/subscribe/bids?taskId=${encodeURIComponent(taskId)}`;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+
+      const res = await fetch(url, {
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        clearTimeout(timer);
+        const err = await res.text();
+        return { content: [{ type: "text", text: `Error: ${res.status} ${err}` }] };
+      }
+
+      const bids = [];
+      let taskStatus = null;
+
+      // Read SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // keep incomplete line
+
+        let currentEvent = null;
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ") && currentEvent) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (currentEvent === "bid") {
+                bids.push(data);
+              } else if (currentEvent === "status") {
+                taskStatus = data.status;
+              } else if (currentEvent === "timeout") {
+                // Server-side timeout, stop reading
+                reader.cancel();
+              }
+            } catch {}
+            currentEvent = null;
+          } else if (line === "") {
+            currentEvent = null;
+          }
+        }
+
+        // If we got bids, return them
+        if (bids.length > 0) {
+          clearTimeout(timer);
+          reader.cancel();
+          break;
+        }
+
+        // If task status changed (no longer open), stop
+        if (taskStatus && taskStatus !== "open") {
+          clearTimeout(timer);
+          reader.cancel();
+          break;
+        }
+      }
+
+      clearTimeout(timer);
+
+      if (bids.length > 0) {
+        return {
+          content: [{
+            type: "text",
+            text: `${bids.length} new bid(s) received:\n${JSON.stringify(bids, null, 2)}`
+          }],
+        };
+      }
+
+      if (taskStatus) {
+        return {
+          content: [{ type: "text", text: `Task status changed to "${taskStatus}". No longer accepting bids.` }],
+        };
+      }
+
+      return {
+        content: [{ type: "text", text: "No bids received within timeout. You can call wait_for_bids again to keep waiting." }],
+      };
+    } catch (e) {
+      if (e.name === "AbortError") {
+        return {
+          content: [{ type: "text", text: "No bids received within timeout. You can call wait_for_bids again to keep waiting." }],
+        };
+      }
+      return { content: [{ type: "text", text: `Error: ${e.message}` }] };
+    }
+  }
+);
+
 // ── Start ──
 const transport = new StdioServerTransport();
 await server.connect(transport);

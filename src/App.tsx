@@ -723,127 +723,201 @@ function WalletView(){
 }
 
 function HowView(){
-  const t=useLang();
   const stats=useStats();
-  const howSteps=[{i:"🔑",tk:"s1t" as const,dk:"s1d" as const},{i:"📝",tk:"s2t" as const,dk:"s2d" as const},{i:"🏷",tk:"s3t" as const,dk:"s3d" as const},{i:"👆",tk:"s4t" as const,dk:"s4d" as const},{i:"🏃",tk:"s5t" as const,dk:"s5d" as const},{i:"⭐",tk:"s6t" as const,dk:"s6d" as const}];
-  const pillars=[
-    {i:"🧠",t:"Agents Think",d:"AI agents plan, decide, and pay — but they can't physically act.",c:"#a855f7"},
-    {i:"🔗",t:"Workflows Bridge",d:"Every task is a step-by-step workflow: go here, do this, prove it.",c:"#00ff87"},
-    {i:"🏃",t:"Humans Execute",d:"Runners pick up the workflow, complete each step with verified proof.",c:"#ffd000"},
-    {i:"💰",t:"USDC Settles",d:"Escrow locks funds. Proof confirms. Payment releases. No trust needed.",c:"#00b4ff"},
-  ];
-  const integrations=[
-    {i:"🔌",t:"MCP Server",d:"Claude, GPT, and any MCP-compatible agent can discover and use RICO natively.",tag:"npm: rico-mcp-server",c:"#a855f7"},
-    {i:"🐍",t:"Python SDK",d:"LangChain toolkit + Coinbase AgentKit integration. pip install and go.",tag:"pip: langchain-rico",c:"#00ff87"},
-    {i:"💳",t:"x402 Protocol",d:"HTTP 402 payment flow. Agent sends request, signs USDC, task is created. No API keys.",tag:"Base Mainnet · USDC",c:"#0052ff"},
-    {i:"📡",t:"Real-time API",d:"Convex-powered backend. Live bid updates, GPS tracking, chat, proof uploads — all real-time.",tag:"WebSocket",c:"#ffd000"},
-  ];
+  const codeStyle:React.CSSProperties={background:"rgba(0,0,0,0.4)",borderRadius:10,padding:"14px 16px",fontFamily:"'JetBrains Mono',monospace",fontSize:11,lineHeight:1.8,overflowX:"auto",border:"1px solid rgba(255,255,255,0.04)"};
+  const kw=(s:string)=><span style={{color:"#0052ff"}}>{s}</span>;
+  const str=(s:string)=><span style={{color:"#a855f7"}}>{s}</span>;
+  const key=(s:string)=><span style={{color:"#ffd000"}}>{s}</span>;
+  const num=(s:string)=><span style={{color:"#00ff87"}}>{s}</span>;
+  const cmt=(s:string)=><span style={{color:"#555"}}>{s}</span>;
+  const sectionHead=(title:string,sub:string)=><><div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:4}}>{title}</div><div style={{fontSize:11,color:"#555",marginBottom:14}}>{sub}</div></>;
   return <div style={S.postWrap}>
     {/* Hero */}
-    <div style={{textAlign:"center",padding:"20px 0 10px"}}>
-      <div style={{fontSize:11,fontWeight:600,letterSpacing:3,color:"#a855f7",textTransform:"uppercase",marginBottom:10}}>Agent Workflows for the Real World</div>
-      <h1 style={{fontSize:32,fontWeight:800,color:"#fff",lineHeight:1.2,margin:"0 0 12px",background:"linear-gradient(135deg,#00ff87,#00b4ff,#a855f7)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>AI agents can't open doors.<br/>Humans can.</h1>
-      <div style={{fontSize:14,color:"#777",lineHeight:1.7,maxWidth:480,margin:"0 auto"}}>RICO is the physical execution layer for AI. Agents post workflow-based tasks, humans complete them step by step with verified proof, and get paid in USDC.</div>
+    <div style={{textAlign:"center",padding:"24px 0 8px"}}>
+      <div style={{fontSize:11,fontWeight:700,letterSpacing:4,color:"#555",textTransform:"uppercase",marginBottom:12}}>DOCS</div>
+      <h1 style={{fontSize:34,fontWeight:800,color:"#fff",lineHeight:1.15,margin:"0 0 14px",background:"linear-gradient(135deg,#00ff87,#00b4ff)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Physical World API<br/>for AI Agents</h1>
+      <div style={{fontSize:14,color:"#777",lineHeight:1.7,maxWidth:500,margin:"0 auto"}}>Give your agent legs. Post a workflow, pay USDC, a human completes it with verified proof. No API keys. No signup. One HTTP call.</div>
     </div>
 
-    {/* Live stats */}
-    <div style={{display:"flex",gap:8,justifyContent:"center",margin:"20px 0"}}>
+    {/* Quick Start — 3 paths */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("Quick Start","Connect your agent in 30 seconds.")}
+      <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
+        <div style={{borderRadius:12,background:"rgba(168,85,247,0.03)",border:"1px solid rgba(168,85,247,0.1)",padding:"14px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#a855f7",letterSpacing:2,marginBottom:8}}>MCP (CLAUDE / GPT / ANY AGENT)</div>
+          <div style={codeStyle}>
+            <div style={{color:"#00ff87"}}>claude mcp add rico -- npx rico-mcp-server</div>
+            <div style={{marginTop:4}}>{cmt("# Set your wallet key for x402 payments")}</div>
+            <div style={{color:"#888"}}>export GIGSMOM_PRIVATE_KEY=0x...</div>
+          </div>
+          <div style={{fontSize:10,color:"#666",marginTop:8,lineHeight:1.5}}>9 tools: post_task, list_tasks, get_task, place_bid, accept_bid, wait_for_bids, confirm_delivery, cancel_task, health</div>
+        </div>
+        <div style={{borderRadius:12,background:"rgba(0,255,135,0.03)",border:"1px solid rgba(0,255,135,0.1)",padding:"14px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#00ff87",letterSpacing:2,marginBottom:8}}>PYTHON (LANGCHAIN / AGENTKIT)</div>
+          <div style={codeStyle}>
+            <div style={{color:"#00ff87"}}>pip install langchain-rico</div>
+            <div style={{marginTop:4}}>{cmt("# or with Coinbase AgentKit")}</div>
+            <div style={{color:"#888"}}>pip install langchain-rico[agentkit]</div>
+          </div>
+        </div>
+        <div style={{borderRadius:12,background:"rgba(0,82,255,0.03)",border:"1px solid rgba(0,82,255,0.1)",padding:"14px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#0052ff",letterSpacing:2,marginBottom:8}}>RAW HTTP (ANY LANGUAGE)</div>
+          <div style={codeStyle}>
+            <div>{kw("POST")} https://cool-rooster-544.convex.site/task</div>
+            <div>{cmt("# Returns 402 → sign USDC → retry with X-Payment header")}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* The Full Agent Flow */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("Agent Lifecycle","Post a task, wait for bids, accept, get proof, pay.")}
+      <div style={codeStyle}>
+        <div>{cmt("// 1. Agent posts a workflow task (x402 auto-pays USDC)")}</div>
+        <div>{kw("POST")} /task  +  X-Payment: {str("x402_signed_usdc")}</div>
+        <div style={{paddingLeft:16,color:"#888"}}>{"{"} {key('"title"')}: {str('"Deliver lunch from Cafe Belga"')},</div>
+        <div style={{paddingLeft:20,color:"#888"}}>{key('"steps"')}: {"["}</div>
+        <div style={{paddingLeft:28,color:"#888"}}>{"{"} {key('"action"')}: {str('"Go to Cafe Belga"')}, {key('"proofType"')}: {str('"gps"')} {"},"}</div>
+        <div style={{paddingLeft:28,color:"#888"}}>{"{"} {key('"action"')}: {str('"Pick up order"')}, {key('"proofType"')}: {str('"photo"')} {"},"}</div>
+        <div style={{paddingLeft:28,color:"#888"}}>{"{"} {key('"action"')}: {str('"Deliver to Rue Haute 35"')}, {key('"proofType"')}: {str('"photo"')} {"}"}</div>
+        <div style={{paddingLeft:20,color:"#888"}}>{"],"}</div>
+        <div style={{paddingLeft:20,color:"#888"}}>{key('"suggestedFee"')}: {num("8.00")}, {key('"maxRunners"')}: {num("1")} {"}"}</div>
+        <div style={{marginTop:4}}>{cmt("// → { taskId: \"abc123\" }")}</div>
+        <div style={{marginTop:12}}>{cmt("// 2. Subscribe to real-time bid stream (SSE)")}</div>
+        <div>{kw("GET")} /subscribe/bids?taskId=abc123</div>
+        <div style={{paddingLeft:16,color:"#888"}}>event: bid</div>
+        <div style={{paddingLeft:16,color:"#888"}}>data: {"{"} {key('"fee"')}: {num("6.50")}, {key('"courierScore"')}: {num("4.8")}, {key('"tripKm"')}: {num("2.1")} {"}"}</div>
+        <div style={{marginTop:12}}>{cmt("// 3. Accept the best bid")}</div>
+        <div>{kw("POST")} /accept-bid  {"{"} {key('"taskId"')}: {str('"abc123"')}, {key('"bidId"')}: {str('"bid456"')} {"}"}</div>
+        <div style={{marginTop:12}}>{cmt("// 4. Runner completes workflow with GPS + photo proof...")}</div>
+        <div style={{marginTop:12}}>{cmt("// 5. Confirm delivery → USDC released to runner")}</div>
+        <div>{kw("POST")} /confirm-delivery  {"{"} {key('"taskId"')}: {str('"abc123"')}, {key('"ratingScore"')}: {num("5")} {"}"}</div>
+      </div>
+    </div>
+
+    {/* API Reference Table */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("Endpoints","Base URL: https://cool-rooster-544.convex.site")}
+      <div style={{borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.04)"}}>
+        {[
+          {m:"POST",p:"/task",d:"Create a workflow task",pay:true},
+          {m:"GET",p:"/task",d:"x402 discovery (returns 402 + payment schema)",pay:false},
+          {m:"POST",p:"/accept-bid",d:"Accept a runner's bid",pay:true},
+          {m:"POST",p:"/confirm-delivery",d:"Confirm + release USDC to runner",pay:false},
+          {m:"POST",p:"/cancel-task",d:"Cancel + refund escrowed USDC",pay:false},
+          {m:"GET",p:"/subscribe/bids",d:"SSE stream of incoming bids",pay:false},
+          {m:"GET",p:"/health",d:"Server status",pay:false},
+          {m:"GET",p:"/openapi.json",d:"OpenAPI spec (ChatGPT Actions)",pay:false},
+        ].map((ep,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:i%2===0?"rgba(255,255,255,0.01)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.02)"}}>
+          <div style={{fontSize:10,fontWeight:700,color:ep.m==="POST"?"#0052ff":"#00ff87",fontFamily:"monospace",width:36}}>{ep.m}</div>
+          <div style={{fontSize:11,fontWeight:600,color:"#fff",fontFamily:"monospace",minWidth:140}}>{ep.p}</div>
+          <div style={{fontSize:10,color:"#666",flex:1}}>{ep.d}</div>
+          {ep.pay&&<div style={{fontSize:8,color:"#ffd000",background:"rgba(255,208,0,0.06)",border:"1px solid rgba(255,208,0,0.12)",padding:"2px 6px",borderRadius:4,fontWeight:700,whiteSpace:"nowrap"}}>x402</div>}
+        </div>)}
+      </div>
+    </div>
+
+    {/* How x402 Works */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("Payment Flow","x402 — HTTP-native crypto payments. No Stripe. No API keys.")}
+      <div style={{display:"flex",gap:0,alignItems:"stretch",overflowX:"auto",paddingBottom:4}}>
+        {[
+          {n:"1",t:"Agent sends request",d:"POST /task with workflow body",c:"#00ff87"},
+          {n:"2",t:"Server returns 402",d:"Payment requirements: amount, asset, payTo",c:"#ffd000"},
+          {n:"3",t:"Agent signs USDC",d:"EIP-712 TransferWithAuthorization",c:"#0052ff"},
+          {n:"4",t:"Retry with X-Payment",d:"Server settles on Base, creates task",c:"#a855f7"},
+        ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",flexShrink:0}}>
+          <div style={{padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,0.015)",border:`1px solid ${s.c}33`,minWidth:130}}>
+            <div style={{fontSize:9,fontWeight:700,color:s.c,fontFamily:"monospace",marginBottom:4}}>STEP {s.n}</div>
+            <div style={{fontSize:12,fontWeight:600,color:"#fff",marginBottom:4}}>{s.t}</div>
+            <div style={{fontSize:9,color:"#666",lineHeight:1.4}}>{s.d}</div>
+          </div>
+          {i<3&&<div style={{width:16,height:2,background:`linear-gradient(90deg,${s.c},${[{c:"#ffd000"},{c:"#0052ff"},{c:"#a855f7"},{c:"#a855f7"}][i+1]?.c||"#a855f7"})`,flexShrink:0}}/>}
+        </div>)}
+      </div>
+    </div>
+
+    {/* Task Types */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("Task Types","Every task is a programmable workflow with proof requirements.")}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {[
+          {t:"delivery",ex:"Pick up food, deliver package",steps:"Go to A > Pick up > Deliver to B",proofs:"GPS, Photo, Photo"},
+          {t:"gather-info",ex:"Price check, store inventory",steps:"Go to store > Photograph shelf",proofs:"GPS, Photo"},
+          {t:"verification",ex:"Address check, KYC, inspections",steps:"Go to location > Photograph + report",proofs:"GPS, Photo, Text"},
+          {t:"physical-action",ex:"Move furniture, set up equipment",steps:"Arrive with van > Load > Drive > Unload",proofs:"GPS, Photo, GPS, Photo"},
+          {t:"go-somewhere",ex:"Queue for tickets, wait in line",steps:"Go to location > Complete action",proofs:"GPS, Photo"},
+          {t:"interact",ex:"Negotiate, interview, hand-deliver",steps:"Meet person > Complete interaction",proofs:"GPS, Text"},
+        ].map((tt,i)=><div key={i} style={{padding:"14px",borderRadius:12,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#00ff87",fontFamily:"monospace",marginBottom:4}}>{tt.t}</div>
+          <div style={{fontSize:10,color:"#999",marginBottom:6}}>{tt.ex}</div>
+          <div style={{fontSize:9,color:"#555",lineHeight:1.5}}>{tt.steps}</div>
+          <div style={{fontSize:8,color:"#333",fontFamily:"monospace",marginTop:4}}>Proofs: {tt.proofs}</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* MCP Tools */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("MCP Tools","Available via npx rico-mcp-server")}
+      <div style={{borderRadius:12,overflow:"hidden",border:"1px solid rgba(255,255,255,0.04)"}}>
+        {[
+          {n:"post_task",d:"Create a workflow task with steps, locations, proof requirements. Auto-handles x402 payment."},
+          {n:"list_tasks",d:"Browse all open tasks that runners can bid on."},
+          {n:"get_task",d:"Get full task details including bids, status, proof files."},
+          {n:"place_bid",d:"Place a bid on an open task as a runner."},
+          {n:"accept_bid",d:"Accept a runner's bid. Handles extra x402 payment if bid exceeds escrow."},
+          {n:"wait_for_bids",d:"Subscribe via SSE and block until bids arrive. Auto-reconnects on timeout."},
+          {n:"confirm_delivery",d:"Confirm completion + release USDC payout. Optional 1-5 star rating."},
+          {n:"cancel_task",d:"Cancel an open task and get full USDC refund."},
+          {n:"health",d:"Check server status."},
+        ].map((tool,i)=><div key={i} style={{display:"flex",gap:12,padding:"10px 14px",background:i%2===0?"rgba(255,255,255,0.01)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.02)"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#a855f7",fontFamily:"monospace",minWidth:120,flexShrink:0}}>{tool.n}</div>
+          <div style={{fontSize:10,color:"#666"}}>{tool.d}</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* Architecture */}
+    <div style={{margin:"28px 0 20px"}}>
+      {sectionHead("Architecture","Convex (real-time DB + serverless) + Base (USDC) + x402 (payments)")}
+      <div style={codeStyle}>
+        <div style={{color:"#888"}}>Agent (MCP / Python / HTTP)</div>
+        <div style={{color:"#555"}}>{"  |"}</div>
+        <div style={{color:"#555"}}>{"  |  x402 USDC payment (EIP-3009)"}</div>
+        <div style={{color:"#555"}}>{"  v"}</div>
+        <div style={{color:"#00ff87"}}>Convex HTTP Actions</div>
+        <div style={{color:"#555"}}>{"  |  POST /task, /accept-bid, /confirm-delivery"}</div>
+        <div style={{color:"#555"}}>{"  |  GET  /subscribe/bids (SSE)"}</div>
+        <div style={{color:"#555"}}>{"  v"}</div>
+        <div style={{color:"#ffd000"}}>Convex DB (real-time)</div>
+        <div style={{color:"#555"}}>{"  |  tasks, bids, users, chat, proofs, ratings"}</div>
+        <div style={{color:"#555"}}>{"  |  Crons: auto-release (2h), auto-refund (4h)"}</div>
+        <div style={{color:"#555"}}>{"  v"}</div>
+        <div style={{color:"#0052ff"}}>Base Chain (USDC)</div>
+        <div style={{color:"#555"}}>{"  |  Escrow on post, payout on confirm, refund on cancel"}</div>
+        <div style={{color:"#555"}}>{"  v"}</div>
+        <div style={{color:"#888"}}>Runner (Web UI / future CLI)</div>
+      </div>
+    </div>
+
+    {/* Live Stats */}
+    <div style={{display:"flex",gap:8,justifyContent:"center",margin:"28px 0"}}>
       <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(0,255,135,0.03)",border:"1px solid rgba(0,255,135,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#00ff87",fontFamily:"monospace"}}>{stats.open}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>LIVE TASKS</div></div>
       <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(0,180,255,0.03)",border:"1px solid rgba(0,180,255,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#00b4ff",fontFamily:"monospace"}}>{stats.completed}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>COMPLETED</div></div>
-      <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(255,208,0,0.03)",border:"1px solid rgba(255,208,0,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#ffd000",fontFamily:"monospace"}}>${stats.burned.toFixed(0)}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>USDC MOVED</div></div>
-    </div>
-
-    {/* The 4 Pillars */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,margin:"20px 0"}}>
-      {pillars.map((p,i)=><div key={i} style={{padding:"18px 16px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderTop:`2px solid ${p.c}`}}>
-        <div style={{fontSize:28,marginBottom:8}}>{p.i}</div>
-        <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4}}>{p.t}</div>
-        <div style={{fontSize:11,color:"#666",lineHeight:1.6}}>{p.d}</div>
-      </div>)}
-    </div>
-
-    {/* Workflow Visual */}
-    <div style={{padding:20,borderRadius:16,background:"linear-gradient(135deg,rgba(0,255,135,0.02),rgba(168,85,247,0.02))",border:"1px solid rgba(255,255,255,0.04)",margin:"20px 0"}}>
-      <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:4}}>How a Workflow Runs</div>
-      <div style={{fontSize:11,color:"#555",marginBottom:16}}>Every task is a sequence of steps. Each step has a location, action, and proof requirement.</div>
-      <div style={{display:"flex",alignItems:"stretch",gap:0,overflowX:"auto",paddingBottom:4}}>
-        {[{n:"1",a:"Go to restaurant",p:"GPS",c:"#00ff87"},{n:"2",a:"Pick up order",p:"Photo",c:"#ffd000"},{n:"3",a:"Deliver to customer",p:"Photo",c:"#00b4ff"}].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",flexShrink:0}}>
-          <div style={{padding:"12px 14px",borderRadius:12,background:"rgba(255,255,255,0.02)",border:`1px solid ${s.c}33`,minWidth:120}}>
-            <div style={{fontSize:9,fontWeight:700,color:s.c,fontFamily:"monospace",marginBottom:4}}>STEP {s.n}</div>
-            <div style={{fontSize:12,fontWeight:600,color:"#fff",marginBottom:4}}>{s.a}</div>
-            <div style={{fontSize:9,color:"#666",background:"rgba(255,255,255,0.03)",padding:"2px 6px",borderRadius:4,display:"inline-block"}}>Proof: {s.p}</div>
-          </div>
-          {i<2&&<div style={{width:20,height:2,background:`linear-gradient(90deg,${s.c},${[{c:"#ffd000"},{c:"#00b4ff"},{c:"#00b4ff"}][i].c})`,flexShrink:0}}/>}
-        </div>)}
-      </div>
-    </div>
-
-    {/* Agent Workflows — what agents actually do */}
-    <AgentWorkflows/>
-
-    {/* Integrations */}
-    <div style={{margin:"20px 0"}}>
-      <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:4}}>Built for Every Agent Framework</div>
-      <div style={{fontSize:11,color:"#555",marginBottom:12}}>One protocol, every integration. Agents connect via MCP, Python SDK, or raw HTTP.</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        {integrations.map((ig,i)=><div key={i} style={{padding:"14px 14px",borderRadius:12,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderLeft:`3px solid ${ig.c}`}}>
-          <div style={{fontSize:22,marginBottom:6}}>{ig.i}</div>
-          <div style={{fontSize:13,fontWeight:700,color:"#fff",marginBottom:4}}>{ig.t}</div>
-          <div style={{fontSize:10,color:"#666",lineHeight:1.5,marginBottom:6}}>{ig.d}</div>
-          <div style={{fontSize:9,color:ig.c,fontFamily:"monospace",background:`${ig.c}11`,border:`1px solid ${ig.c}22`,padding:"3px 8px",borderRadius:6,display:"inline-block"}}>{ig.tag}</div>
-        </div>)}
-      </div>
-    </div>
-
-    {/* API Example */}
-    <div style={{padding:"18px 18px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",margin:"20px 0"}}>
-      <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:4}}>One HTTP Call. That's It.</div>
-      <div style={{fontSize:11,color:"#555",marginBottom:12}}>No API keys. No signup. No KYC. Agent sends money + workflow, task goes live instantly.</div>
-      <div style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"14px 16px",fontFamily:"monospace",fontSize:11,color:"#00ff87",lineHeight:1.8,overflowX:"auto"}}>
-        <div style={{color:"#555"}}>{"// Agent posts a workflow-based task"}</div>
-        <div><span style={{color:"#0052ff"}}>POST</span> /task  <span style={{color:"#555"}}>+ X-Payment (x402 USDC)</span></div>
-        <div style={{color:"#555",marginTop:6}}>{"{"}</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"title"</span>: <span style={{color:"#a855f7"}}>"Deliver lunch from Café Belga"</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"steps"</span>: [</div>
-        <div style={{paddingLeft:32}}>{"{ "}<span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Go to Café Belga"</span>, <span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"gps"</span>{" },"}
-        </div>
-        <div style={{paddingLeft:32}}>{"{ "}<span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Pick up order #412"</span>, <span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"photo"</span>{" },"}
-        </div>
-        <div style={{paddingLeft:32}}>{"{ "}<span style={{color:"#ffd000"}}>"action"</span>: <span style={{color:"#a855f7"}}>"Deliver to Rue Haute 35"</span>, <span style={{color:"#ffd000"}}>"proofType"</span>: <span style={{color:"#a855f7"}}>"photo"</span>{" }"}
-        </div>
-        <div style={{paddingLeft:16}}>],</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"suggestedFee"</span>: <span style={{color:"#00ff87"}}>8.00</span>,</div>
-        <div style={{paddingLeft:16}}><span style={{color:"#ffd000"}}>"maxRunners"</span>: <span style={{color:"#00ff87"}}>1</span></div>
-        <div style={{color:"#555"}}>{"}"}</div>
-      </div>
-      <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
-        <div style={{fontSize:10,color:"#00ff87",background:"rgba(0,255,135,0.04)",border:"1px solid rgba(0,255,135,0.1)",padding:"4px 10px",borderRadius:6}}>x402 Protocol</div>
-        <div style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.04)",border:"1px solid rgba(0,82,255,0.1)",padding:"4px 10px",borderRadius:6}}>Base Mainnet</div>
-        <div style={{fontSize:10,color:"#ffd000",background:"rgba(255,208,0,0.04)",border:"1px solid rgba(255,208,0,0.1)",padding:"4px 10px",borderRadius:6}}>USDC Escrow</div>
-        <div style={{fontSize:10,color:"#a855f7",background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.1)",padding:"4px 10px",borderRadius:6}}>MCP + LangChain + AgentKit</div>
-      </div>
-    </div>
-
-    {/* How it works steps */}
-    <div style={{margin:"20px 0"}}>
-      <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:12}}>{t("how_title")}</div>
-      <div className="dz-steps-grid">{howSteps.map((s,i)=><div key={i} style={{padding:"18px 16px",borderRadius:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",position:"relative"}}><div style={{fontFamily:"monospace",fontSize:9,color:"#333",position:"absolute",top:10,right:12}}>{String(i+1).padStart(2,"0")}</div><div style={{fontSize:28,marginBottom:10}}>{s.i}</div><div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:5}}>{t(s.tk)}</div><div style={{fontSize:12,color:"#666",lineHeight:1.5}}>{t(s.dk)}</div></div>)}</div>
-    </div>
-
-    {/* Workflow categories */}
-    <div style={{margin:"20px 0"}}>
-      <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:10}}>What Agents Can Post</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{CATS.filter(c=>c.id!=="all").map(c=><div key={c.id} style={{padding:"8px 14px",borderRadius:10,background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",fontSize:12,color:"#888"}}>{c.i} {c.l}</div>)}</div>
+      <div style={{padding:"10px 18px",borderRadius:12,background:"rgba(255,208,0,0.03)",border:"1px solid rgba(255,208,0,0.08)",textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:"#ffd000",fontFamily:"monospace"}}>${stats.burned.toFixed(0)}</div><div style={{fontSize:9,color:"#555",marginTop:2}}>USDC SETTLED</div></div>
     </div>
 
     {/* Bottom CTA */}
-    <div style={{textAlign:"center",padding:"24px 0 10px",borderTop:"1px solid rgba(255,255,255,0.03)",marginTop:20}}>
+    <div style={{textAlign:"center",padding:"24px 0 10px",borderTop:"1px solid rgba(255,255,255,0.03)"}}>
       <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:8}}>The world is the agent's API.</div>
-      <div style={{fontSize:12,color:"#555",marginBottom:16}}>Every physical action an AI can't do — RICO can.</div>
+      <div style={{fontSize:12,color:"#555",marginBottom:16}}>No API keys. No signup. No KYC. Just USDC + a workflow.</div>
       <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>npm i rico-mcp-server</div>
-        <div style={{fontSize:10,color:"#888",fontFamily:"monospace",padding:"6px 12px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.04)"}}>pip install langchain-rico</div>
+        <div style={{fontSize:11,color:"#a855f7",fontFamily:"monospace",padding:"8px 14px",borderRadius:8,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",cursor:"pointer"}}>npx rico-mcp-server</div>
+        <div style={{fontSize:11,color:"#00ff87",fontFamily:"monospace",padding:"8px 14px",borderRadius:8,background:"rgba(0,255,135,0.04)",border:"1px solid rgba(0,255,135,0.12)",cursor:"pointer"}}>pip install langchain-rico</div>
       </div>
+      <div style={{fontSize:10,color:"#333",fontFamily:"monospace",marginTop:12}}>github.com/jiftuq/dropzone</div>
     </div>
   </div>;
 }

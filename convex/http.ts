@@ -360,6 +360,102 @@ const taskDiscover = httpAction(async (ctx, request) => {
   return send402(requirements, origin);
 });
 
+// ── SSE: Subscribe to bids for a task ──
+// Polls every 3s, streams new bids as SSE events, auto-closes after ~90s.
+// Clients reconnect with Last-Event-ID to resume from where they left off.
+const subscribeBids = httpAction(async (ctx, request) => {
+  const url = new URL(request.url);
+  const taskId = url.searchParams.get("taskId");
+  if (!taskId) {
+    return json({ error: "Missing ?taskId= parameter" }, 400);
+  }
+
+  // Resume from last seen bid timestamp
+  const lastEventId = request.headers.get("Last-Event-ID");
+  let seenAfter = lastEventId ? parseFloat(lastEventId) : 0;
+
+  const POLL_INTERVAL = 3000; // 3 seconds
+  const MAX_DURATION = 90000; // 90 seconds then close (Convex has ~2min limit)
+  const start = Date.now();
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      // Send initial comment to establish connection
+      controller.enqueue(encoder.encode(": connected\n\n"));
+
+      while (Date.now() - start < MAX_DURATION) {
+        try {
+          const bids: any[] = await ctx.runQuery(api.tasks.getBids, {
+            taskId: taskId as Id<"tasks">,
+          });
+
+          // Filter to only new bids since last seen
+          const newBids = bids.filter((b: any) => b.createdAt > seenAfter);
+
+          for (const bid of newBids.reverse()) {
+            const event = {
+              id: bid._id,
+              courierId: bid.courierId,
+              courierName: bid.courierName,
+              fee: bid.fee,
+              comment: bid.comment,
+              lat: bid.lat,
+              lng: bid.lng,
+              tripKm: bid.tripKm,
+              courierScore: bid.courierScore,
+              courierDeliveries: bid.courierDeliveries,
+              createdAt: bid.createdAt,
+            };
+            controller.enqueue(
+              encoder.encode(
+                `id: ${bid.createdAt}\nevent: bid\ndata: ${JSON.stringify(event)}\n\n`
+              )
+            );
+            seenAfter = Math.max(seenAfter, bid.createdAt);
+          }
+
+          // Also check task status — if no longer open, notify and close
+          const task: any = await ctx.runQuery(api.tasks.getTask, {
+            taskId: taskId as Id<"tasks">,
+          });
+          if (task && task.status !== "open") {
+            controller.enqueue(
+              encoder.encode(
+                `event: status\ndata: ${JSON.stringify({ status: task.status })}\n\n`
+              )
+            );
+            controller.close();
+            return;
+          }
+        } catch (e: any) {
+          controller.enqueue(
+            encoder.encode(`event: error\ndata: ${JSON.stringify({ error: e.message })}\n\n`)
+          );
+        }
+
+        // Wait before next poll
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+      }
+
+      // Timeout — client should reconnect
+      controller.enqueue(encoder.encode(`event: timeout\ndata: {}\n\n`));
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Last-Event-ID",
+    },
+  });
+});
+
 // ── Router ──
 const http = httpRouter();
 
@@ -375,6 +471,9 @@ http.route({ path: "/confirm-delivery", method: "OPTIONS", handler: corsOptions 
 
 http.route({ path: "/cancel-task", method: "POST", handler: cancelTask });
 http.route({ path: "/cancel-task", method: "OPTIONS", handler: corsOptions });
+
+http.route({ path: "/subscribe/bids", method: "GET", handler: subscribeBids });
+http.route({ path: "/subscribe/bids", method: "OPTIONS", handler: corsOptions });
 
 http.route({ path: "/health", method: "GET", handler: health });
 http.route({ path: "/openapi.json", method: "GET", handler: openapi });
