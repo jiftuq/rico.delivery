@@ -5,6 +5,7 @@ import { Id } from "./_generated/dataModel";
 
 const NETWORK = "base";
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const RECEIVING_WALLET = "0xd2d255aa52D3c043e2bAa4A4c86b8e881Ce2BFba";
 
 function corsHeaders(origin?: string) {
   return {
@@ -55,7 +56,42 @@ function send402(requirements: ReturnType<typeof buildRequirements>, origin?: st
 // ── POST /task ──
 const postTask = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+
+  // Check for payment header FIRST — return 402 discovery before parsing body
+  if (!request.headers.get("X-Payment") && !request.headers.get("PAYMENT-SIGNATURE")) {
+    const paymentRequired = {
+      x402Version: 2,
+      schemes: [{
+        scheme: "exact",
+        network: NETWORK,
+        maxAmountRequired: "1000000",
+        resource: "https://cool-rooster-544.convex.site/task",
+        description: "GIGS.MOM task posting — min $1 USDC",
+        mimeType: "application/json",
+        payTo: RECEIVING_WALLET,
+        maxTimeoutSeconds: 300,
+        asset: USDC_ADDRESS,
+        extra: { name: "USD Coin", version: "2" },
+      }],
+    };
+    const jsonStr = JSON.stringify(paymentRequired);
+    const bytes = new TextEncoder().encode(jsonStr);
+    let b64 = "";
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (let i = 0; i < bytes.length; i += 3) {
+      const b0 = bytes[i], b1 = bytes[i + 1] ?? 0, b2 = bytes[i + 2] ?? 0;
+      b64 += chars[b0 >> 2] + chars[((b0 & 3) << 4) | (b1 >> 4)] +
+        (i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=") +
+        (i + 2 < bytes.length ? chars[b2 & 63] : "=");
+    }
+    return new Response(
+      JSON.stringify({ error: "Payment required", x402: true, accepts: paymentRequired.schemes }),
+      { status: 402, headers: { "Content-Type": "application/json", "PAYMENT-REQUIRED": b64, ...corsHeaders(origin) } }
+    );
+  }
+
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
 
   const itemCost = parseFloat(body?.itemCost) || 0;
   const suggestedFee = parseFloat(body?.suggestedFee) || 0;
@@ -63,15 +99,12 @@ const postTask = httpAction(async (ctx, request) => {
   // Multi-runner: escrow = fee * maxRunners. Single: itemCost + fee
   const totalUSDC = Math.max(maxRunners > 1 ? suggestedFee * maxRunners : itemCost + suggestedFee, 0.01);
 
-  const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+  const receivingWallet = RECEIVING_WALLET;
   const resource = new URL("/task", request.url).toString();
   const requirements = buildRequirements(totalUSDC, resource, `RICO task: $${totalUSDC.toFixed(2)} USDC`, receivingWallet);
 
-  const paymentHeader = request.headers.get("X-Payment");
-  if (!paymentHeader) return send402(requirements, origin);
-
   const result: any = await ctx.runAction(internal.payments.verifyX402, {
-    paymentBase64: paymentHeader,
+    paymentBase64: request.headers.get("X-Payment")!,
     requirements,
   });
   if (!result.ok) return json({ error: "Payment invalid", reason: result.reason }, 402, origin);
@@ -87,7 +120,8 @@ const postTask = httpAction(async (ctx, request) => {
 // ── POST /accept-bid ──
 const acceptBid = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
   const { taskId, bidId, posterId } = body;
 
   if (!taskId || !bidId || !posterId) {
@@ -114,7 +148,7 @@ const acceptBid = httpAction(async (ctx, request) => {
     const diff = newTotal - task.totalEscrowed;
 
     if (diff > 0.001) {
-      const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
+      const receivingWallet = RECEIVING_WALLET;
       const resource = new URL("/accept-bid", request.url).toString();
       const requirements = buildRequirements(diff, resource, `RICO extra fee: $${diff.toFixed(2)} USDC`, receivingWallet);
       const paymentHeader = request.headers.get("X-Payment");
@@ -166,7 +200,8 @@ const acceptBid = httpAction(async (ctx, request) => {
 // ── POST /confirm-delivery ──
 const confirmDelivery = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
   const { taskId, posterId, runnerId, ratingScore, ratingComment } = body;
 
   if (!taskId || !posterId) {
@@ -247,7 +282,8 @@ const confirmDelivery = httpAction(async (ctx, request) => {
 // ── POST /cancel-task ──
 const cancelTask = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const body = await request.json();
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
   const { taskId, posterId } = body;
 
   if (!taskId || !posterId) {
@@ -305,26 +341,16 @@ const openapi = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const spec = {
     openapi: "3.1.0",
-    info: { title: "RICO — Agent Workflows for the Real World", version: "1.1.0",
-      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base." },
+    info: { title: "RICO — Agent Workflows for the Real World", version: "1.2.0",
+      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base.",
+      guidance: "Use POST /task with workflow steps to hire humans for real-world actions. Payment is automatic via x402 — send USDC on Base. Each task is a sequence of steps with proof requirements." },
     servers: [{ url: "https://cool-rooster-544.convex.site" }],
     paths: {
       "/task": { post: { operationId: "postTask", summary: "Post a workflow-based task",
+        "x-payment-info": { protocols: ["x402"], pricingMode: "range", minPrice: "1000000", maxPrice: "100000000", asset: USDC_ADDRESS, network: "base", payTo: RECEIVING_WALLET },
         requestBody: { required: true, content: { "application/json": { schema: { "$ref": "#/components/schemas/PostTaskRequest" } } } },
-        responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } } } } },
-      "/accept-bid": { post: { operationId: "acceptBid", summary: "Accept a runner's bid",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId","posterId"],
-          properties: { taskId: { type: "string" }, bidId: { type: "string" }, posterId: { type: "string" } } } } } },
-        responses: { "200": { description: "Bid accepted" } } } },
-      "/confirm-delivery": { post: { operationId: "confirmDelivery", summary: "Confirm completion and release USDC",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
-          properties: { taskId: { type: "string" }, posterId: { type: "string" }, runnerId: { type: "string" }, ratingScore: { type: "integer" }, ratingComment: { type: "string" } } } } } },
-        responses: { "200": { description: "Confirmed, USDC released" } } } },
-      "/cancel-task": { post: { operationId: "cancelTask", summary: "Cancel task and refund USDC",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
-          properties: { taskId: { type: "string" }, posterId: { type: "string" } } } } } },
-        responses: { "200": { description: "Cancelled, USDC refunded" } } } },
-      "/health": { get: { operationId: "healthCheck", summary: "Check server status", responses: { "200": { description: "OK" } } } }
+        responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } },
+          "402": { description: "Payment Required — send USDC on Base via x402 protocol" } } } },
     },
     components: { schemas: {
       WorkflowStep: { type: "object", properties: {
@@ -352,12 +378,59 @@ const openapi = httpAction(async (_ctx, request) => {
 });
 
 // ── GET /task — x402 discovery (returns 402 with payment schema) ──
-const taskDiscover = httpAction(async (ctx, request) => {
+const taskDiscover = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
-  const receivingWallet: string = await ctx.runAction(internal.payments.getReceivingWallet, {});
   const resource = new URL("/task", request.url).toString();
-  const requirements = buildRequirements(1.00, resource, "RICO — Post workflow tasks for humans. Min $1 USDC.", receivingWallet);
-  return send402(requirements, origin);
+  const paymentRequired = {
+    x402Version: 2,
+    accepts: [{
+      scheme: "exact",
+      network: NETWORK,
+      maxAmountRequired: "1000000",
+      resource,
+      description: "RICO task posting — min $1 USDC",
+      mimeType: "application/json",
+      payTo: RECEIVING_WALLET,
+      maxTimeoutSeconds: 300,
+      asset: USDC_ADDRESS,
+      extra: { name: "USD Coin", version: "2" },
+    }],
+  };
+  const jsonStr = JSON.stringify(paymentRequired);
+  const bytes = new TextEncoder().encode(jsonStr);
+  let b64 = "";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i], b1 = bytes[i + 1] ?? 0, b2 = bytes[i + 2] ?? 0;
+    b64 += chars[b0 >> 2] + chars[((b0 & 3) << 4) | (b1 >> 4)] +
+      (i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=") +
+      (i + 2 < bytes.length ? chars[b2 & 63] : "=");
+  }
+  return new Response(
+    JSON.stringify({
+      error: "Payment required",
+      x402: true,
+      description: "RICO — Agent workflows for the real world. Deliveries, moving, info gathering, verification. Pay in USDC on Base.",
+      accepts: paymentRequired.accepts,
+    }),
+    {
+      status: 402,
+      headers: {
+        "Content-Type": "application/json",
+        "PAYMENT-REQUIRED": b64,
+        ...corsHeaders(origin),
+      },
+    }
+  );
+});
+
+// ── GET /.well-known/x402 — discovery fallback ──
+const wellKnownX402 = httpAction(async (_ctx, request) => {
+  const origin = request.headers.get("Origin") || undefined;
+  return new Response(
+    JSON.stringify({ version: 1, resources: ["POST /task"] }),
+    { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } }
+  );
 });
 
 // ── SSE: Subscribe to bids for a task ──
@@ -480,5 +553,7 @@ http.route({ path: "/openapi.json", method: "GET", handler: openapi });
 http.route({ path: "/openapi.json", method: "OPTIONS", handler: corsOptions });
 http.route({ path: "/.well-known/openapi.json", method: "GET", handler: openapi });
 http.route({ path: "/.well-known/openapi.json", method: "OPTIONS", handler: corsOptions });
+http.route({ path: "/.well-known/x402", method: "GET", handler: wellKnownX402 });
+http.route({ path: "/.well-known/x402", method: "OPTIONS", handler: corsOptions });
 
 export default http;
