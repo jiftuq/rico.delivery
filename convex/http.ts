@@ -66,7 +66,7 @@ const postTask = httpAction(async (ctx, request) => {
         network: NETWORK,
         maxAmountRequired: "1000000",
         resource: "https://cool-rooster-544.convex.site/task",
-        description: "GIGS.MOM task posting — min $1 USDC",
+        description: "RICO task posting — min $1 USDC",
         mimeType: "application/json",
         payTo: RECEIVING_WALLET,
         maxTimeoutSeconds: 300,
