@@ -748,7 +748,7 @@ function HowView(){
           <div style={codeStyle}>
             <div style={{color:"#00ff87"}}>claude mcp add rico -- npx rico-mcp-server</div>
             <div style={{marginTop:4}}>{cmt("# Set your wallet key for x402 payments")}</div>
-            <div style={{color:"#888"}}>export GIGSMOM_PRIVATE_KEY=0x...</div>
+            <div style={{color:"#888"}}>export RICO_PRIVATE_KEY=0x...</div>
           </div>
           <div style={{fontSize:10,color:"#666",marginTop:8,lineHeight:1.5}}>9 tools: post_task, list_tasks, get_task, place_bid, accept_bid, wait_for_bids, confirm_delivery, cancel_task, health</div>
         </div>
@@ -759,6 +759,16 @@ function HowView(){
             <div style={{marginTop:4}}>{cmt("# or with Coinbase AgentKit")}</div>
             <div style={{color:"#888"}}>pip install langchain-rico[agentkit]</div>
           </div>
+        </div>
+        <div style={{borderRadius:12,background:"rgba(255,170,0,0.03)",border:"1px solid rgba(255,170,0,0.1)",padding:"14px 16px"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#ffaa00",letterSpacing:2,marginBottom:8}}>CLI (TERMINAL)</div>
+          <div style={codeStyle}>
+            <div style={{color:"#ffaa00"}}>npm install -g rico-cli</div>
+            <div style={{marginTop:4}}>{cmt("# Post tasks, list, confirm, cancel from your terminal")}</div>
+            <div style={{color:"#888"}}>rico config --key 0x...</div>
+            <div style={{color:"#888"}}>rico post</div>
+          </div>
+          <div style={{fontSize:10,color:"#666",marginTop:8,lineHeight:1.5}}>Commands: post, list, get, confirm, cancel, health, config</div>
         </div>
         <div style={{borderRadius:12,background:"rgba(0,82,255,0.03)",border:"1px solid rgba(0,82,255,0.1)",padding:"14px 16px"}}>
           <div style={{fontSize:10,fontWeight:700,color:"#0052ff",letterSpacing:2,marginBottom:8}}>RAW HTTP (ANY LANGUAGE)</div>
