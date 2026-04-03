@@ -15,12 +15,14 @@ metadata:
     - usdc
     - x402
     - mcp
-  requires:
-    env:
-      RICO_URL: Convex deployment URL (default: https://cool-rooster-544.convex.site)
-      RICO_PRIVATE_KEY: Agent wallet private key with USDC on Base for x402 payments
-    bins:
-      - npx
+  openclaw:
+    requires:
+      env:
+        - RICO_PRIVATE_KEY
+        - RICO_URL
+      bins:
+        - npx
+    primaryEnv: RICO_PRIVATE_KEY
 ---
 
 # RICO — Agent Workflows for the Real World
