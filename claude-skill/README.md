@@ -13,8 +13,8 @@ claude plugin add rico-claude-skill
 
 Or clone the repo and the skill loads automatically:
 ```bash
-git clone https://github.com/jiftuq/dropzone
-cd dropzone
+git clone https://github.com/jiftuq/rico.delivery
+cd rico.delivery
 claude
 # /rico is now available
 ```
@@ -56,6 +56,6 @@ Fee: $15 USDC | 1 runner
 ## Links
 
 - Website: https://rico.delivery
-- GitHub: https://github.com/jiftuq/dropzone
+- GitHub: https://github.com/jiftuq/rico.delivery
 - npm (MCP): https://npmjs.com/package/rico-mcp-server
 - PyPI (SDK): https://pypi.org/project/langchain-rico

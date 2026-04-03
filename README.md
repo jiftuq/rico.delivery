@@ -139,6 +139,7 @@ mcp-server/                   # MCP server (npm: rico-mcp-server)
 sdk-python/                   # Python SDK (PyPI: langchain-rico)
 openai-gpt/                   # ChatGPT Custom GPT config
 claude-skill/                 # Claude Code skill
+openclaw-skill/               # OpenClaw skill
 ```
 
 ## Stack
