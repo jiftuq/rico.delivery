@@ -67,6 +67,16 @@ export async function connectWallet(): Promise<string> {
   return addr;
 }
 
+export async function disconnectWallet(): Promise<void> {
+  await provider.disconnect();
+  _walletClient = null;
+}
+
+export async function switchWallet(): Promise<string> {
+  await disconnectWallet();
+  return connectWallet();
+}
+
 export async function payUSDC(amountUSDC: number): Promise<string> {
   if (!PLATFORM_WALLET) throw new Error("Platform wallet not configured");
   await ensureBaseChain();

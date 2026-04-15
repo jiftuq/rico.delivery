@@ -4,7 +4,7 @@ import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, usePro
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
-import { connectWallet, payUSDC, SERVER_URL } from "./lib/wallet";
+import { connectWallet, switchWallet, payUSDC, SERVER_URL } from "./lib/wallet";
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -976,6 +976,7 @@ export default function App(){
   const[showLangMenu,setShowLangMenu]=useState(false);
   const[walletAddr,setWalletAddr]=useState<string|null>(null);
   const connect=async()=>{try{const a=await connectWallet();setWalletAddr(a);setToast(translate("wallet_ready"));setTimeout(()=>setToast(null),3000)}catch(e:any){alert(e.message)}};
+  const swapWallet=async()=>{try{const a=await switchWallet();setWalletAddr(a);setToast("Wallet switched");setTimeout(()=>setToast(null),3000)}catch(e:any){alert(e.message)}};
   const translate=(k:keyof TranslationKeys,...args:string[])=>{
     let s=(T[lang]?.[k]??T.en[k]??String(k));
     args.forEach((a,i)=>{s=s.replace(`{${i}}`,a)});return s;
@@ -996,7 +997,7 @@ export default function App(){
             </div>}
           </div>
           {userLoc&&<div style={{fontSize:12,color:"#a855f7",background:"rgba(168,85,247,0.05)",border:"1px solid rgba(168,85,247,0.12)",padding:"4px 8px",borderRadius:12}}>📍</div>}
-          {walletAddr?<div style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.05)",border:"1px solid rgba(0,82,255,0.15)",padding:"5px 10px",borderRadius:12,fontFamily:"monospace"}}>{walletAddr.slice(0,6)}…{walletAddr.slice(-4)}</div>:<button onClick={connect} style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.05)",border:"1px solid rgba(0,82,255,0.15)",padding:"5px 10px",borderRadius:10,fontFamily:"monospace"}}>🔗 Wallet</button>}
+          {walletAddr?<button onClick={swapWallet} style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.05)",border:"1px solid rgba(0,82,255,0.15)",padding:"5px 10px",borderRadius:12,fontFamily:"monospace",cursor:"pointer"}}>{walletAddr.slice(0,6)}…{walletAddr.slice(-4)} ⇄</button>:<button onClick={connect} style={{fontSize:10,color:"#0052ff",background:"rgba(0,82,255,0.05)",border:"1px solid rgba(0,82,255,0.15)",padding:"5px 10px",borderRadius:10,fontFamily:"monospace"}}>🔗 Wallet</button>}
         </div>
       </div>
     </header>
