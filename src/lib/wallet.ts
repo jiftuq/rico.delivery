@@ -35,15 +35,41 @@ function getWalletClient(account: `0x${string}`) {
   return _walletClient;
 }
 
+async function ensureBaseChain() {
+  const chainId = await provider.request({ method: "eth_chainId" }) as string;
+  if (parseInt(chainId, 16) !== 8453) {
+    try {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x2105" }] });
+    } catch (e: any) {
+      if (e.code === 4902) {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0x2105",
+            chainName: "Base",
+            nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls: ["https://mainnet.base.org"],
+            blockExplorerUrls: ["https://basescan.org"],
+          }],
+        });
+      } else {
+        throw e;
+      }
+    }
+  }
+}
+
 export async function connectWallet(): Promise<string> {
   const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
   const addr = accounts[0];
   getWalletClient(addr as `0x${string}`);
+  await ensureBaseChain();
   return addr;
 }
 
 export async function payUSDC(amountUSDC: number): Promise<string> {
   if (!PLATFORM_WALLET) throw new Error("Platform wallet not configured");
+  await ensureBaseChain();
   if (!_walletClient?.account) {
     const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
     getWalletClient(accounts[0] as `0x${string}`);
