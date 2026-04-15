@@ -4,7 +4,7 @@ import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, usePro
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
-import { connectWallet, payFetch, SERVER_URL } from "./lib/wallet";
+import { connectWallet, SERVER_URL } from "./lib/wallet";
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -258,7 +258,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   useEffect(()=>{if(!open||!userLoc||task.status!=="open")return;if(isDel){getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]).then(r=>r&&setRouteKm(r.km))}else{getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]).then(r=>r&&setRouteKm(r.km))}},[open,userLoc]);
   const bidMap=bids.filter((b:any)=>b.lat&&b.lng).map((b:any)=>({name:b.courierName,lat:b.lat,lng:b.lng,fee:b.fee,score:b.courierScore}));
   const submitBid=async()=>{if(!bidFee||!userId||!userLoc)return;let tripKm:number;if(isDel){const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10}else{const route=await getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]);tripKm=route?parseFloat(route.km):Math.round(haversine(userLoc,[locLat,locLng])*10)/10}actions.placeBid({taskId:task._id,courierId:userId,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});hap.success();setBidFee("");setBidComment("")};
-  const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await payFetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.double()}catch(e:any){hap.error();alert(e.message)}};
+  const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await fetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.double()}catch(e:any){hap.error();alert(e.message)}};
   const doCancel=async()=>{hap.medium();if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.heavy()}catch(e:any){hap.error();alert(e.message)}};
   const doSubmitProof=()=>{if(!isCourier||!userId)return;hap.success();actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
   const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;hap.light();setUploading(true);try{await uploadProof(file,task._id,userId);hap.success()}catch(err:any){hap.error();alert(err.message)}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
@@ -443,7 +443,7 @@ function AgentWorkflows(){
     </div>
     <div style={{marginTop:12,padding:"12px 16px",borderRadius:12,background:"rgba(0,82,255,0.03)",border:"1px solid rgba(0,82,255,0.08)"}}>
       <div style={{fontSize:11,color:"#0052ff",fontWeight:600,marginBottom:4}}>How agents connect</div>
-      <div style={{fontSize:10,color:"#666",lineHeight:1.6,fontFamily:"monospace"}}>POST /task + X-Payment header (x402 USDC on Base) → task created → runners bid → proof submitted → USDC released</div>
+      <div style={{fontSize:10,color:"#666",lineHeight:1.6,fontFamily:"monospace"}}>POST /task → task created → runners bid → proof submitted → USDC released from platform wallet</div>
     </div>
   </div>;
 }
@@ -542,7 +542,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     setSaveName("");alert("Workflow saved!");
   };
 
-  const updateStep=(i:number,k:string,v:any)=>setSteps(steps.map((s,idx)=>idx===i?{...s,[k]:v}:s));
+  const updateStep=(i:number,k:string,v:any)=>setSteps(prev=>prev.map((s,idx)=>idx===i?{...s,[k]:v}:s));
   const addStep=()=>setSteps([...steps,emptyStep()]);
   const removeStep=(i:number)=>setSteps(steps.filter((_,idx)=>idx!==i));
   const moveStep=(i:number,dir:number)=>{const j=i+dir;if(j<0||j>=steps.length)return;const ns=[...steps];[ns[i],ns[j]]=[ns[j],ns[i]];setSteps(ns)};
@@ -571,7 +571,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
         body.locationAddr=firstLoc.locationAddr;body.locationLat=firstLoc.locationLat||50.85;body.locationLng=firstLoc.locationLng||4.35;
         body.action=filledSteps.map(s=>s.action).join(" → ");body.proofType=filledSteps.find(s=>s.proofType!=="none")?.proofType||"photo";
       }
-      const res=await payFetch(`${SERVER_URL}/task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const res=await fetch(`${SERVER_URL}/task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       if(!res.ok){const e=await res.json();throw new Error(e.error);}
       hap.success();setOk(true);setTimeout(()=>setOk(false),3500);
       setPreset(null);setTitle("");setSteps([]);setFee("");setMaxRunners("1");setDetails("");
@@ -792,8 +792,8 @@ function HowView(){
           <div style={{fontSize:10,fontWeight:700,color:"#a855f7",letterSpacing:2,marginBottom:8}}>MCP (CLAUDE / GPT / ANY AGENT)</div>
           <div style={codeStyle}>
             <div style={{color:amber}}>claude mcp add rico -- npx rico-mcp-server</div>
-            <div style={{marginTop:4}}>{cmt("# Set your wallet key")}</div>
-            <div style={{color:"#666"}}>export RICO_PRIVATE_KEY=0x...</div>
+            <div style={{marginTop:4}}>{cmt("# Set your wallet key for payouts")}</div>
+            <div style={{color:"#666"}}>export RICO_WALLET=0x...</div>
           </div>
         </div>
         <div style={{borderRadius:12,background:`${amberDim}0.02)`,border:`1px solid ${amberDim}0.08)`,padding:"14px 16px"}}>
@@ -817,7 +817,7 @@ function HowView(){
           <div style={{fontSize:10,fontWeight:700,color:"#0052ff",letterSpacing:2,marginBottom:8}}>RAW HTTP (ANY LANGUAGE)</div>
           <div style={codeStyle}>
             <div>{kw("POST")} https://cool-rooster-544.convex.site/task</div>
-            <div>{cmt("# Returns 402 → sign USDC → retry with X-Payment")}</div>
+            <div>{cmt("# Direct POST — platform wallet handles escrow + payouts")}</div>
           </div>
         </div>
       </div>
@@ -829,8 +829,8 @@ function HowView(){
     <div style={{margin:"0 0 20px"}}>
       {sectionHead("The Protocol","Post a job. Wait for bids. Accept. Get proof. Settle.")}
       <div style={codeStyle}>
-        <div>{cmt("// 1. Agent posts a job (x402 auto-pays USDC)")}</div>
-        <div>{kw("POST")} /task  +  X-Payment: {str("x402_signed_usdc")}</div>
+        <div>{cmt("// 1. Agent posts a workflow task")}</div>
+        <div>{kw("POST")} /task</div>
         <div style={{paddingLeft:16,color:"#888"}}>{"{"} {key('"title"')}: {str('"Deliver lunch from Cafe Belga"')},</div>
         <div style={{paddingLeft:20,color:"#888"}}>{key('"steps"')}: {"["}</div>
         <div style={{paddingLeft:28,color:"#888"}}>{"{"} {key('"action"')}: {str('"Go to Cafe Belga"')}, {key('"proofType"')}: {str('"gps"')} {"},"}</div>
@@ -858,10 +858,10 @@ function HowView(){
       {sectionHead("Settlement","No paper trail.")}
       <div style={{display:"flex",gap:0,alignItems:"stretch",overflowX:"auto",paddingBottom:4}}>
         {[
-          {n:"1",t:"Agent sends request",d:"POST /task with workflow body",c:amber},
-          {n:"2",t:"Server returns 402",d:"Payment requirements: amount, asset, payTo",c:"#ff4757"},
-          {n:"3",t:"Agent signs USDC",d:"EIP-712 TransferWithAuthorization",c:"#0052ff"},
-          {n:"4",t:"Retry with X-Payment",d:"Server settles on Base, creates job",c:"#a855f7"},
+          {n:"1",t:"Post task",d:"POST /task — platform holds escrow",c:amber},
+          {n:"2",t:"Runners bid",d:"SSE stream delivers bids in real-time",c:"#ff4757"},
+          {n:"3",t:"Accept + deliver",d:"Runner completes workflow steps with proof",c:"#0052ff"},
+          {n:"4",t:"Confirm + payout",d:"Platform sends USDC to runner on Base",c:"#a855f7"},
         ].map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",flexShrink:0}}>
           <div style={{padding:"12px 14px",borderRadius:12,background:"rgba(0,0,0,0.3)",border:`1px solid ${s.c}33`,minWidth:130}}>
             <div style={{fontSize:9,fontWeight:700,color:s.c,fontFamily:"monospace",marginBottom:4}}>STEP {s.n}</div>
@@ -880,9 +880,8 @@ function HowView(){
       {sectionHead("Endpoints","Base URL: https://cool-rooster-544.convex.site")}
       <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${amberDim}0.06)`}}>
         {[
-          {m:"POST",p:"/task",d:"Create a workflow job",pay:true},
-          {m:"GET",p:"/task",d:"x402 discovery (returns 402 + payment schema)",pay:false},
-          {m:"POST",p:"/accept-bid",d:"Accept a runner's bid",pay:true},
+          {m:"POST",p:"/task",d:"Create a workflow task",pay:false},
+          {m:"POST",p:"/accept-bid",d:"Accept a runner's bid",pay:false},
           {m:"POST",p:"/confirm-delivery",d:"Confirm + release USDC to runner",pay:false},
           {m:"POST",p:"/cancel-task",d:"Cancel + refund escrowed USDC",pay:false},
           {m:"GET",p:"/subscribe/bids",d:"SSE stream of incoming bids",pay:false},
@@ -892,7 +891,7 @@ function HowView(){
           <div style={{fontSize:10,fontWeight:700,color:ep.m==="POST"?amber:"#666",fontFamily:"monospace",width:36}}>{ep.m}</div>
           <div style={{fontSize:11,fontWeight:600,color:"#ccc",fontFamily:"monospace",minWidth:140}}>{ep.p}</div>
           <div style={{fontSize:10,color:"#555",flex:1}}>{ep.d}</div>
-          {ep.pay&&<div style={{fontSize:8,color:amber,background:`${amberDim}0.06)`,border:`1px solid ${amberDim}0.12)`,padding:"2px 6px",borderRadius:4,fontWeight:700,whiteSpace:"nowrap"}}>x402</div>}
+          {ep.pay&&<div style={{fontSize:8,color:amber,background:`${amberDim}0.06)`,border:`1px solid ${amberDim}0.12)`,padding:"2px 6px",borderRadius:4,fontWeight:700,whiteSpace:"nowrap"}}>USDC</div>}
         </div>)}
       </div>
     </div>
@@ -904,11 +903,11 @@ function HowView(){
       {sectionHead("MCP Tools","Available via npx rico-mcp-server")}
       <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${amberDim}0.06)`}}>
         {[
-          {n:"post_task",d:"Create a workflow job with steps, locations, proof requirements. Auto-handles x402 payment."},
+          {n:"post_task",d:"Create a workflow job with steps, locations, proof requirements."},
           {n:"list_tasks",d:"Browse all open jobs that runners can bid on."},
           {n:"get_task",d:"Get full job details including bids, status, proof files."},
           {n:"place_bid",d:"Place a bid on an open job as a runner."},
-          {n:"accept_bid",d:"Accept a runner's bid. Handles extra x402 payment if bid exceeds escrow."},
+          {n:"accept_bid",d:"Accept a runner's bid."},
           {n:"wait_for_bids",d:"Subscribe via SSE and block until bids arrive. Auto-reconnects on timeout."},
           {n:"confirm_delivery",d:"Confirm completion + release USDC payout. Optional 1-5 star rating."},
           {n:"cancel_task",d:"Cancel an open job and get full USDC refund."},
@@ -928,7 +927,7 @@ function HowView(){
       <div style={codeStyle}>
         <div style={{color:"#888"}}>Agent (MCP / Python / HTTP)</div>
         <div style={{color:"#333"}}>{"  |"}</div>
-        <div style={{color:"#444"}}>{"  |  x402 USDC payment (EIP-3009)"}</div>
+        <div style={{color:"#444"}}>{"  |  POST request"}</div>
         <div style={{color:"#333"}}>{"  v"}</div>
         <div style={{color:amber}}>Convex HTTP Actions</div>
         <div style={{color:"#444"}}>{"  |  POST /task, /accept-bid, /confirm-delivery"}</div>
