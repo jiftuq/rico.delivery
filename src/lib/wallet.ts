@@ -1,5 +1,5 @@
 import { CoinbaseWalletSDK } from "@coinbase/wallet-sdk";
-import { createWalletClient, createPublicClient, custom, http, parseUnits, encodeFunctionData } from "viem";
+import { createWalletClient, createPublicClient, custom, http, parseUnits } from "viem";
 import { base } from "viem/chains";
 
 const sdk = new CoinbaseWalletSDK({
@@ -77,17 +77,15 @@ export async function payUSDC(amountUSDC: number): Promise<string> {
 
   const amount = parseUnits(amountUSDC.toFixed(6), 6);
 
-  const data = encodeFunctionData({
+  const { request } = await createPublicClient({ chain: base, transport: http() }).simulateContract({
+    address: USDC_ADDRESS,
     abi: ERC20_ABI,
     functionName: "transfer",
     args: [PLATFORM_WALLET, amount],
+    account: _walletClient!.account!,
   });
 
-  const hash = await _walletClient!.sendTransaction({
-    to: USDC_ADDRESS,
-    data,
-    chain: base,
-  });
+  const hash = await _walletClient!.writeContract(request);
 
   const publicClient = createPublicClient({ chain: base, transport: http() });
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
