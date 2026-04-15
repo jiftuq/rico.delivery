@@ -84,6 +84,7 @@ export default defineSchema({
     acceptedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
+    paymentTx: v.optional(v.string()),
     disputeReason: v.optional(v.string()),
     disputeBy: v.optional(v.string()),
     disputedAt: v.optional(v.number()),

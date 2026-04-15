@@ -62,6 +62,7 @@ export const create = mutation({
     items: v.optional(v.array(v.object({ name: v.string(), cost: v.float64() }))),
     maxRunners: v.optional(v.number()),
     posterId: v.id("users"),
+    paymentTx: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const poster = await ctx.db.get(args.posterId);
@@ -80,6 +81,7 @@ export const create = mutation({
       itemCost, suggestedFee: args.suggestedFee, items: args.items,
       totalEscrowed: total, posterId: args.posterId, posterName: poster.displayName,
       maxRunners, acceptedCount: 0, completedCount: 0,
+      paymentTx: args.paymentTx,
       status: "open", createdAt: Date.now(),
     };
 

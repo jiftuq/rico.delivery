@@ -4,7 +4,7 @@ import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, usePro
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
-import { connectWallet, SERVER_URL } from "./lib/wallet";
+import { connectWallet, payUSDC, SERVER_URL } from "./lib/wallet";
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -547,6 +547,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const removeStep=(i:number)=>setSteps(steps.filter((_,idx)=>idx!==i));
   const moveStep=(i:number,dir:number)=>{const j=i+dir;if(j<0||j>=steps.length)return;const ns=[...steps];[ns[i],ns[j]]=[ns[j],ns[i]];setSteps(ns)};
 
+  const[paying,setPaying]=useState(false);
   const submit=async()=>{
     const missing:string[]=[];
     if(!title)missing.push("Title");
@@ -556,15 +557,16 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     if(!userId)return;
     if(!walletAddr){await connect();return;}
     const filledSteps=steps.filter(s=>s.action.trim());
-    // Derive locations from steps
     const firstLoc=filledSteps.find(s=>s.locationAddr);
     const lastLoc=[...filledSteps].reverse().find(s=>s.locationAddr);
     const isDel=wp?.taskType==="delivery"&&filledSteps.filter(s=>s.locationAddr).length>=2;
     try{
+      setPaying(true);
+      const txHash=await payUSDC(total);
       const body:any={
         title,category:wp?.cat||"custom",details:details||filledSteps.map((s,i)=>`${i+1}. ${s.action}`).join(" → "),
         taskType:wp?.taskType||"gather-info",privacyZone:parseInt(privacyZone)||100,
-        suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId,
+        suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId,paymentTx:txHash,
         steps:filledSteps.map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined,status:"pending"})),
       };
       if(isDel&&firstLoc&&lastLoc){
@@ -579,7 +581,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       if(!res.ok){const e=await res.json();throw new Error(e.error);}
       hap.success();setOk(true);setTimeout(()=>setOk(false),3500);
       setPreset(null);setTitle("");setSteps([]);setFee("");setMaxRunners("1");setDetails("");
-    }catch(e:any){hap.error();alert(e.message);}
+    }catch(e:any){hap.error();alert(e.message);}finally{setPaying(false);}
   };
 
   const presetBtnS=(active:boolean):any=>({padding:"10px 14px",borderRadius:12,border:active?"1px solid #00ff87":"1px solid rgba(255,255,255,0.06)",background:active?"rgba(0,255,135,0.06)":"rgba(255,255,255,0.015)",color:active?"#00ff87":"#999",fontSize:12,fontWeight:active?700:500,fontFamily:"'Outfit',sans-serif",textAlign:"left" as const,whiteSpace:"nowrap"});
@@ -673,7 +675,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
 
       {/* Submit */}
       {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}
-      {walletAddr&&<button style={{...S.postBtn,padding:16,fontSize:15,marginTop:16}} onClick={submit}>🔒 {t("post_btn")} · {total>0?"$"+total.toFixed(2)+" USDC":""}</button>}
+      {walletAddr&&<button style={{...S.postBtn,padding:16,fontSize:15,marginTop:16,opacity:paying?0.5:1}} onClick={submit} disabled={paying}>{paying?"⏳ Paying...":"💳 "+t("post_btn")+(total>0?" · $"+total.toFixed(2)+" USDC":"")}</button>}
     </>}
   </div>;
 }
