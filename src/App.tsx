@@ -548,10 +548,14 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const moveStep=(i:number,dir:number)=>{const j=i+dir;if(j<0||j>=steps.length)return;const ns=[...steps];[ns[i],ns[j]]=[ns[j],ns[i]];setSteps(ns)};
 
   const submit=async()=>{
-    if(!title||!userId||steps.length===0)return;
+    const missing:string[]=[];
+    if(!title)missing.push("Title");
+    if(steps.length===0||steps.filter(s=>s.action.trim()).length===0)missing.push("At least one workflow step");
+    if(!fee||parseFloat(fee)<=0)missing.push("Fee per runner");
+    if(missing.length>0){hap.error();alert("Missing: "+missing.join(", "));return;}
+    if(!userId)return;
     if(!walletAddr){await connect();return;}
     const filledSteps=steps.filter(s=>s.action.trim());
-    if(filledSteps.length===0)return;
     // Derive locations from steps
     const firstLoc=filledSteps.find(s=>s.locationAddr);
     const lastLoc=[...filledSteps].reverse().find(s=>s.locationAddr);
