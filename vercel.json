@@ -3,6 +3,6 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/((?!\\.well-known/|og\\.).*)", "destination": "/index.html" }
+    { "source": "/((?!\\.well-known/|assets/|og\\.|logo\\.).*)", "destination": "/index.html" }
   ]
 }
