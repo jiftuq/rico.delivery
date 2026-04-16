@@ -329,6 +329,156 @@ const subscribeBids = httpAction(async (ctx, request) => {
   });
 });
 
+// ── OG image (SVG) ──
+const ogImage = httpAction(async (ctx) => {
+  const tasks: any[] = await ctx.runQuery(api.tasks.listOpen, {});
+  const count = tasks.length;
+  const top = tasks.slice(0, 3).map((t: any, i: number) =>
+    `<text x="60" y="${460 + i * 32}" font-family="monospace" font-size="18" fill="#888">${t.title.slice(0, 50)} — $${t.suggestedFee}</text>`
+  ).join("");
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0b0c12"/>
+  <rect x="60" y="60" width="60" height="60" rx="14" fill="#ffd000"/>
+  <text x="90" y="105" font-family="monospace" font-size="32" fill="#000" text-anchor="middle" font-weight="800">&#9670;</text>
+  <text x="140" y="105" font-family="monospace" font-size="32" fill="#fff" font-weight="700" letter-spacing="4">RICO</text>
+  <text x="60" y="260" font-family="sans-serif" font-size="56" fill="#fff" font-weight="800">Humans do what agents can't.</text>
+  <text x="60" y="330" font-family="sans-serif" font-size="28" fill="#00ff87" font-weight="500">Post. Bid. Prove. — USDC on Base</text>
+  <text x="60" y="400" font-family="monospace" font-size="22" fill="#ffd000">${count} open task${count !== 1 ? "s" : ""} in San Francisco</text>
+  ${top}
+  <text x="60" y="590" font-family="monospace" font-size="16" fill="#444">rico.delivery</text>
+</svg>`;
+
+  return new Response(svg, {
+    headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=60" },
+  });
+});
+
+// ── Farcaster manifest ──
+const farcasterManifest = httpAction(async () => {
+  const manifest = {
+    accountAssociation: {
+      header: "eyJmaWQiOjAsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHgwMCJ9",
+      payload: "eyJkb21haW4iOiJyaWNvLmRlbGl2ZXJ5In0",
+      signature: "0x00",
+    },
+    frame: {
+      version: "1",
+      name: "RICO",
+      iconUrl: "https://cool-rooster-544.convex.site/og.svg",
+      homeUrl: "https://rico.delivery",
+      splashImageUrl: "https://cool-rooster-544.convex.site/og.svg",
+      splashBackgroundColor: "#0b0c12",
+      webhookUrl: "https://cool-rooster-544.convex.site/frame",
+    },
+  };
+  return new Response(JSON.stringify(manifest), {
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+  });
+});
+
+// ── Neynar frame validation ──
+async function validateFrameAction(messageBytes: string): Promise<{
+  valid: boolean;
+  fid?: number;
+  username?: string;
+  displayName?: string;
+  pfpUrl?: string;
+  custodyAddress?: string;
+  verifiedAddresses?: string[];
+  buttonIndex?: number;
+  inputText?: string;
+} | null> {
+  const apiKey = process.env.NEYNAR_API_KEY;
+  if (!apiKey) return null;
+
+  const res = await fetch("https://api.neynar.com/v2/farcaster/frame/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+    body: JSON.stringify({ message_bytes_in_hex: messageBytes, cast_reaction_context: true }),
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.valid) return { valid: false };
+
+  const action = data.action;
+  return {
+    valid: true,
+    fid: action.interactor?.fid,
+    username: action.interactor?.username,
+    displayName: action.interactor?.display_name,
+    pfpUrl: action.interactor?.pfp_url,
+    custodyAddress: action.interactor?.custody_address,
+    verifiedAddresses: action.interactor?.verified_addresses?.eth_addresses || [],
+    buttonIndex: action.tapped_button?.index,
+    inputText: action.input?.text,
+  };
+}
+
+function frameHtml(opts: { title: string; description: string; buttons: { label: string; action: string; target: string }[] }) {
+  const btnMeta = opts.buttons.map((b, i) => `
+<meta property="fc:frame:button:${i + 1}" content="${b.label}" />
+<meta property="fc:frame:button:${i + 1}:action" content="${b.action}" />
+<meta property="fc:frame:button:${i + 1}:target" content="${b.target}" />`).join("");
+
+  return `<!DOCTYPE html>
+<html><head>
+<meta property="og:title" content="${opts.title}" />
+<meta property="og:description" content="${opts.description.replace(/"/g, "&quot;")}" />
+<meta property="og:image" content="https://cool-rooster-544.convex.site/og.svg" />
+<meta property="fc:frame" content="vNext" />
+<meta property="fc:frame:image" content="https://cool-rooster-544.convex.site/og.svg" />${btnMeta}
+</head><body></body></html>`;
+}
+
+// ── Farcaster Frame endpoint ──
+const frameHandler = httpAction(async (ctx, request) => {
+  const origin = request.headers.get("Origin") || undefined;
+
+  if (request.method === "GET") {
+    const tasks: any[] = await ctx.runQuery(api.tasks.listOpen, {});
+    const count = tasks.length;
+
+    const html = frameHtml({
+      title: `RICO — ${count} open tasks`,
+      description: count > 0
+        ? tasks.slice(0, 3).map((t: any) => `${t.title} — $${t.suggestedFee}`).join(" | ")
+        : "No open tasks. Be the first to post!",
+      buttons: [
+        { label: `Browse ${count} Tasks`, action: "link", target: "https://rico.delivery" },
+        { label: "Post a Task", action: "link", target: "https://rico.delivery" },
+      ],
+    });
+
+    return new Response(html, {
+      headers: { "Content-Type": "text/html", ...corsHeaders(origin) },
+    });
+  }
+
+  // POST — validate frame action via Neynar
+  let body: any;
+  try { body = await request.json(); } catch { return json({ error: "Invalid body" }, 400, origin); }
+
+  const messageBytes = body.trustedData?.messageBytes;
+  if (!messageBytes) return json({ error: "Missing frame message" }, 400, origin);
+
+  const user = await validateFrameAction(messageBytes);
+
+  if (!user || !user.valid) {
+    return json({ error: "Invalid frame action" }, 403, origin);
+  }
+
+  console.log(`Frame action from @${user.username} (FID: ${user.fid}), button: ${user.buttonIndex}`);
+
+  return json({
+    ok: true,
+    fid: user.fid,
+    username: user.username,
+    addresses: user.verifiedAddresses,
+  }, 200, origin);
+});
+
 // ── Router ──
 const http = httpRouter();
 
@@ -352,5 +502,11 @@ http.route({ path: "/openapi.json", method: "GET", handler: openapi });
 http.route({ path: "/openapi.json", method: "OPTIONS", handler: corsOptions });
 http.route({ path: "/.well-known/openapi.json", method: "GET", handler: openapi });
 http.route({ path: "/.well-known/openapi.json", method: "OPTIONS", handler: corsOptions });
+
+http.route({ path: "/og.svg", method: "GET", handler: ogImage });
+http.route({ path: "/.well-known/farcaster.json", method: "GET", handler: farcasterManifest });
+http.route({ path: "/frame", method: "GET", handler: frameHandler });
+http.route({ path: "/frame", method: "POST", handler: frameHandler });
+http.route({ path: "/frame", method: "OPTIONS", handler: corsOptions });
 
 export default http;

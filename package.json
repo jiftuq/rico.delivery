@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@coinbase/wallet-sdk": "latest",
+    "@neynar/nodejs-sdk": "^3.137.2",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "convex": "^1.17.4",
