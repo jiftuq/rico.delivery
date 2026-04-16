@@ -416,38 +416,97 @@ async function validateFrameAction(messageBytes: string): Promise<{
   };
 }
 
-function frameHtml(opts: { title: string; description: string; buttons: { label: string; action: string; target: string }[] }) {
-  const btnMeta = opts.buttons.map((b, i) => `
-<meta property="fc:frame:button:${i + 1}" content="${b.label}" />
-<meta property="fc:frame:button:${i + 1}:action" content="${b.action}" />
-<meta property="fc:frame:button:${i + 1}:target" content="${b.target}" />`).join("");
+function esc(s: string) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function frameHtml(opts: {
+  title: string;
+  description: string;
+  image: string;
+  postUrl?: string;
+  buttons: { label: string; action: "post" | "link" | "post_redirect"; target?: string }[];
+}) {
+  const btnMeta = opts.buttons.map((b, i) => {
+    let meta = `\n<meta property="fc:frame:button:${i + 1}" content="${esc(b.label)}" />`;
+    meta += `\n<meta property="fc:frame:button:${i + 1}:action" content="${b.action}" />`;
+    if (b.target) meta += `\n<meta property="fc:frame:button:${i + 1}:target" content="${esc(b.target)}" />`;
+    return meta;
+  }).join("");
+
+  const postMeta = opts.postUrl ? `\n<meta property="fc:frame:post_url" content="${esc(opts.postUrl)}" />` : "";
 
   return `<!DOCTYPE html>
 <html><head>
-<meta property="og:title" content="${opts.title}" />
-<meta property="og:description" content="${opts.description.replace(/"/g, "&quot;")}" />
-<meta property="og:image" content="https://cool-rooster-544.convex.site/og.svg" />
+<meta property="og:title" content="${esc(opts.title)}" />
+<meta property="og:description" content="${esc(opts.description)}" />
+<meta property="og:image" content="${esc(opts.image)}" />
 <meta property="fc:frame" content="vNext" />
-<meta property="fc:frame:image" content="https://cool-rooster-544.convex.site/og.svg" />${btnMeta}
+<meta property="fc:frame:image" content="${esc(opts.image)}" />
+<meta property="fc:frame:image:aspect_ratio" content="1.91:1" />${postMeta}${btnMeta}
 </head><body></body></html>`;
 }
+
+const CONVEX_SITE = "https://cool-rooster-544.convex.site";
+
+// ── Per-task OG image ──
+const taskOgImage = httpAction(async (ctx, request) => {
+  const url = new URL(request.url);
+  const taskId = url.searchParams.get("id");
+  if (!taskId) return new Response("Missing id", { status: 400 });
+
+  let task: any;
+  try {
+    task = await ctx.runQuery(api.tasks.getTask, { taskId: taskId as Id<"tasks"> });
+  } catch {
+    return new Response("Invalid task", { status: 400 });
+  }
+  if (!task) return new Response("Task not found", { status: 404 });
+
+  const title = (task.title || "Task").slice(0, 60);
+  const details = (task.details || "").slice(0, 120);
+  const fee = task.suggestedFee || 0;
+  const loc = (task.locationAddr || task.pickupAddr || "San Francisco").slice(0, 50);
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0b0c12"/>
+  <rect x="60" y="60" width="60" height="60" rx="14" fill="#ffd000"/>
+  <text x="90" y="105" font-family="monospace" font-size="32" fill="#000" text-anchor="middle" font-weight="800">&#9670;</text>
+  <text x="140" y="105" font-family="monospace" font-size="28" fill="#fff" font-weight="700" letter-spacing="4">RICO</text>
+  <text x="1140" y="105" font-family="monospace" font-size="42" fill="#00ff87" text-anchor="end" font-weight="800">$${fee}</text>
+  <text x="60" y="250" font-family="sans-serif" font-size="48" fill="#fff" font-weight="800">${esc(title)}</text>
+  <text x="60" y="320" font-family="sans-serif" font-size="22" fill="#999">${esc(details)}</text>
+  <text x="60" y="420" font-family="monospace" font-size="18" fill="#ffd000">📍 ${esc(loc)}</text>
+  <text x="60" y="460" font-family="monospace" font-size="18" fill="#0052ff">${esc((task.taskType || "").toUpperCase())}</text>
+  <text x="60" y="590" font-family="monospace" font-size="16" fill="#444">rico.delivery</text>
+</svg>`;
+
+  return new Response(svg, {
+    headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=30" },
+  });
+});
 
 // ── Farcaster Frame endpoint ──
 const frameHandler = httpAction(async (ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
+  const url = new URL(request.url);
+  const action = url.searchParams.get("a") || "home";
+  const idx = parseInt(url.searchParams.get("i") || "0", 10);
+
+  const tasks: any[] = await ctx.runQuery(api.tasks.listOpen, {});
+  const count = tasks.length;
 
   if (request.method === "GET") {
-    const tasks: any[] = await ctx.runQuery(api.tasks.listOpen, {});
-    const count = tasks.length;
-
     const html = frameHtml({
-      title: `RICO — ${count} open tasks`,
+      title: `RICO — ${count} open tasks in SF`,
       description: count > 0
         ? tasks.slice(0, 3).map((t: any) => `${t.title} — $${t.suggestedFee}`).join(" | ")
         : "No open tasks. Be the first to post!",
+      image: `${CONVEX_SITE}/og.svg`,
+      postUrl: `${CONVEX_SITE}/frame?a=browse&i=0`,
       buttons: [
-        { label: `Browse ${count} Tasks`, action: "link", target: "https://rico.delivery" },
-        { label: "Post a Task", action: "link", target: "https://rico.delivery" },
+        { label: count > 0 ? `Browse ${count} Tasks →` : "Post a Task", action: "post" },
+        { label: "Open App", action: "link", target: "https://rico.delivery" },
       ],
     });
 
@@ -456,27 +515,86 @@ const frameHandler = httpAction(async (ctx, request) => {
     });
   }
 
-  // POST — validate frame action via Neynar
+  // POST — validate via Neynar
   let body: any;
   try { body = await request.json(); } catch { return json({ error: "Invalid body" }, 400, origin); }
 
   const messageBytes = body.trustedData?.messageBytes;
-  if (!messageBytes) return json({ error: "Missing frame message" }, 400, origin);
+  let user = messageBytes ? await validateFrameAction(messageBytes) : null;
 
-  const user = await validateFrameAction(messageBytes);
-
-  if (!user || !user.valid) {
-    return json({ error: "Invalid frame action" }, 403, origin);
+  // Fall back to untrustedData if Neynar key not set (dev only)
+  if (!user && !process.env.NEYNAR_API_KEY) {
+    user = {
+      valid: true,
+      fid: body.untrustedData?.fid,
+      buttonIndex: body.untrustedData?.buttonIndex,
+      verifiedAddresses: [],
+    };
   }
 
-  console.log(`Frame action from @${user.username} (FID: ${user.fid}), button: ${user.buttonIndex}`);
+  if (!user || !user.valid) {
+    return new Response(frameHtml({
+      title: "RICO — Error",
+      description: "Invalid frame action",
+      image: `${CONVEX_SITE}/og.svg`,
+      postUrl: `${CONVEX_SITE}/frame`,
+      buttons: [{ label: "← Back", action: "post" }],
+    }), { headers: { "Content-Type": "text/html", ...corsHeaders(origin) } });
+  }
 
-  return json({
-    ok: true,
-    fid: user.fid,
-    username: user.username,
-    addresses: user.verifiedAddresses,
-  }, 200, origin);
+  console.log(`Frame action from @${user.username || user.fid} (FID: ${user.fid}), button: ${user.buttonIndex}, a=${action}`);
+
+  const btn = user.buttonIndex || 1;
+
+  // Navigation logic
+  let nextAction = action;
+  let nextIdx = idx;
+
+  if (action === "home") {
+    if (btn === 1) { nextAction = count > 0 ? "browse" : "home"; nextIdx = 0; }
+  } else if (action === "browse") {
+    if (btn === 1) nextIdx = (idx - 1 + count) % count; // prev
+    if (btn === 2) nextIdx = (idx + 1) % count;         // next
+    if (btn === 3) {
+      // "Open" → redirect to web app
+      return new Response(frameHtml({
+        title: "RICO",
+        description: "Opening task",
+        image: `${CONVEX_SITE}/og.svg`,
+        buttons: [{ label: "Go to Task", action: "link", target: `https://rico.delivery` }],
+      }), { headers: { "Content-Type": "text/html", ...corsHeaders(origin) } });
+    }
+  }
+
+  // Render current state
+  if (nextAction === "browse" && count > 0) {
+    const task = tasks[nextIdx];
+    const html = frameHtml({
+      title: `${task.title} — $${task.suggestedFee}`,
+      description: (task.details || "").slice(0, 140),
+      image: `${CONVEX_SITE}/task-og?id=${task._id}`,
+      postUrl: `${CONVEX_SITE}/frame?a=browse&i=${nextIdx}`,
+      buttons: [
+        { label: "← Prev", action: "post" },
+        { label: "Next →", action: "post" },
+        { label: `Bid $${task.suggestedFee}`, action: "link", target: "https://rico.delivery" },
+      ],
+    });
+    return new Response(html, { headers: { "Content-Type": "text/html", ...corsHeaders(origin) } });
+  }
+
+  // Default: back to home
+  const html = frameHtml({
+    title: `RICO — ${count} open tasks`,
+    description: "Humans do what agents can't.",
+    image: `${CONVEX_SITE}/og.svg`,
+    postUrl: `${CONVEX_SITE}/frame?a=home`,
+    buttons: [
+      { label: count > 0 ? `Browse ${count} Tasks →` : "Open App", action: count > 0 ? "post" : "link", target: count > 0 ? undefined : "https://rico.delivery" },
+      { label: "Open App", action: "link", target: "https://rico.delivery" },
+    ],
+  });
+  return new Response(html, { headers: { "Content-Type": "text/html", ...corsHeaders(origin) } });
 });
 
 // ── Router ──
@@ -504,6 +622,7 @@ http.route({ path: "/.well-known/openapi.json", method: "GET", handler: openapi 
 http.route({ path: "/.well-known/openapi.json", method: "OPTIONS", handler: corsOptions });
 
 http.route({ path: "/og.svg", method: "GET", handler: ogImage });
+http.route({ path: "/task-og", method: "GET", handler: taskOgImage });
 http.route({ path: "/.well-known/farcaster.json", method: "GET", handler: farcasterManifest });
 http.route({ path: "/frame", method: "GET", handler: frameHandler });
 http.route({ path: "/frame", method: "POST", handler: frameHandler });
