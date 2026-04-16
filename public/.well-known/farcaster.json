@@ -1,0 +1,16 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjAsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHgwMCJ9",
+    "payload": "eyJkb21haW4iOiJyaWNvLmRlbGl2ZXJ5In0",
+    "signature": "0x00"
+  },
+  "frame": {
+    "version": "1",
+    "name": "RICO",
+    "iconUrl": "https://cool-rooster-544.convex.site/og.svg",
+    "homeUrl": "https://rico.delivery",
+    "splashImageUrl": "https://cool-rooster-544.convex.site/og.svg",
+    "splashBackgroundColor": "#0b0c12",
+    "webhookUrl": "https://cool-rooster-544.convex.site/frame"
+  }
+}
