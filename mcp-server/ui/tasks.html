@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RICO tasks</title>
+<style>
+  /* Host style variables (MCP Apps) win when the chat provides them; the
+     fallbacks keep the board readable in hosts that provide none. */
+  :root {
+    color-scheme: light dark;
+    --bg: var(--color-background-primary, light-dark(#ffffff, #14151e));
+    --bg-raised: var(--color-background-secondary, light-dark(#f5f6f8, #1c1d28));
+    --text: var(--color-text-primary, light-dark(#14151e, #f2f2f5));
+    --muted: var(--color-text-secondary, light-dark(#5c5f6e, #a0a3b3));
+    --border: var(--color-border-primary, light-dark(#dfe1e7, #2e3040));
+    --danger: var(--color-text-danger, light-dark(#c62838, #ff6b78));
+    --accent: light-dark(#007a45, #00ff87);
+    --sans: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+    --mono: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 var(--sans);
+    padding: 12px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .count { color: var(--muted); font-weight: 400; }
+  .btn {
+    background: none; border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 10px; font-size: 13px; white-space: nowrap;
+  }
+  .btn:hover { background: var(--bg-raised); }
+  .btn[disabled] { opacity: .55; cursor: default; }
+
+  .list { display: grid; gap: 8px; }
+  .task {
+    display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left;
+    background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .task:hover { border-color: var(--accent); }
+  .task-main { flex: 1; min-width: 0; }
+  .task-title { font-weight: 600; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+  .fee { font-family: var(--mono); font-weight: 600; color: var(--accent); white-space: nowrap; text-align: right; }
+  .fee small { display: block; font: 400 12px var(--sans); color: var(--muted); }
+  .chip {
+    display: inline-block; font-size: 11.5px; border: 1px solid var(--border);
+    border-radius: 999px; padding: 0 7px; color: var(--muted); white-space: nowrap;
+  }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 12px; }
+  .stat-label { display: block; font-size: 11.5px; color: var(--muted); }
+  .stat-value { font-family: var(--mono); font-weight: 600; }
+  h2 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 6px; }
+  ol.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: step; }
+  ol.steps li { display: flex; gap: 10px; counter-increment: step; }
+  ol.steps li::before {
+    content: counter(step); flex: none; width: 20px; height: 20px; border-radius: 50%;
+    border: 1px solid var(--border); font: 600 11px/18px var(--mono); text-align: center; color: var(--muted);
+  }
+  ol.steps li.done::before { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .step-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .bid { border-top: 1px solid var(--border); padding: 8px 0; display: flex; gap: 12px; }
+  .bid:first-of-type { border-top: 0; }
+  .id { font-family: var(--mono); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; user-select: all; }
+  .empty, .error { color: var(--muted); padding: 14px 0; text-align: center; }
+  .error { color: var(--danger); }
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"><p class="empty">Loading tasks…</p></main>
+
+<script>
+(() => {
+  "use strict";
+
+  // ── MCP Apps bridge: JSON-RPC 2.0 over postMessage to the host chat ──
+  const PROTOCOL_VERSION = "2026-01-26";
+  const host = window.parent;
+  const pending = new Map();
+  let nextId = 1;
+
+  const post = (msg) => host.postMessage({ jsonrpc: "2.0", ...msg }, "*");
+  const notify = (method, params) => post({ method, params });
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    post({ id, method, params });
+  });
+  const callTool = (name, args) => request("tools/call", { name, arguments: args || {} });
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== host) return;
+    const msg = event.data;
+    if (!msg || msg.jsonrpc !== "2.0") return;
+
+    if (msg.method === undefined) { // response to one of our requests
+      const waiter = pending.get(msg.id);
+      if (!waiter) return;
+      pending.delete(msg.id);
+      if (msg.error) waiter.reject(new Error(msg.error.message || "Request failed"));
+      else waiter.resolve(msg.result);
+      return;
+    }
+
+    switch (msg.method) {
+      case "ui/notifications/tool-result": showResult(msg.params); break;
+      case "ui/notifications/tool-cancelled": showMessage("The request was cancelled.", "error"); break;
+      case "ui/notifications/host-context-changed": applyHostContext(msg.params); break;
+    }
+    if (msg.id === undefined) return; // notification, no reply expected
+    if (msg.method === "ui/resource-teardown" || msg.method === "ping") post({ id: msg.id, result: {} });
+    else post({ id: msg.id, error: { code: -32601, message: "Method not found: " + msg.method } });
+  });
+
+  function applyHostContext(ctx) {
+    if (!ctx) return;
+    const root = document.documentElement;
+    if (ctx.theme === "light" || ctx.theme === "dark") root.style.colorScheme = ctx.theme;
+    const vars = ctx.styles && ctx.styles.variables;
+    if (vars) for (const [key, value] of Object.entries(vars)) {
+      if (key.startsWith("--") && typeof value === "string") root.style.setProperty(key, value);
+    }
+  }
+
+  // ── Rendering. Task text comes from strangers, so it only ever goes in as
+  //    text nodes, never as HTML. ──
+  const app = document.getElementById("app");
+
+  function el(tag, props, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(props || {})) {
+      if (key === "onclick") node.addEventListener("click", value);
+      else if (key === "class") node.className = value;
+      else if (value !== undefined && value !== false) node.setAttribute(key, value === true ? "" : value);
+    }
+    append(node, children);
+    return node;
+  }
+
+  // Children may be nodes, strings, nested arrays, or null/false to skip.
+  function append(node, children) {
+    for (const child of children.flat(Infinity)) {
+      if (child === null || child === undefined || child === false) continue;
+      node.append(child.nodeType ? child : document.createTextNode(String(child)));
+    }
+  }
+
+  function mount(...children) {
+    app.replaceChildren();
+    append(app, children);
+  }
+
+  const usdc = (n) => (typeof n === "number" ? n.toFixed(2) : "–") + " USDC";
+  const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+
+  function showMessage(text, kind) {
+    mount(el("p", { class: kind || "empty" }, text));
+  }
+
+  function showResult(result) {
+    const data = result && result.structuredContent;
+    if (!result || result.isError || !data) {
+      const text = result && result.content && result.content[0] && result.content[0].text;
+      return showMessage(text || "Something went wrong loading RICO data.", "error");
+    }
+    if (data.view === "task") renderTask(data.task);
+    else renderList(data.tasks || []);
+  }
+
+  async function load(button, name, args) {
+    if (button) { button.disabled = true; }
+    try {
+      showResult(await callTool(name, args));
+    } catch (e) {
+      showMessage("Could not reach RICO: " + e.message, "error");
+    }
+  }
+
+  function renderList(tasks) {
+    const refresh = el("button", { class: "btn", onclick: () => load(refresh, "list_tasks") }, "Refresh");
+    const header = el("header", null,
+      el("h1", null, "Open tasks ", el("span", { class: "count" }, "· " + tasks.length)),
+      refresh);
+
+    if (!tasks.length) {
+      return mount(header, el("p", { class: "empty" }, "No open tasks right now."));
+    }
+
+    const rows = tasks.map((t) => {
+      const row = el("button", { class: "task", onclick: () => load(row, "get_task", { taskId: t.id }) },
+        el("div", { class: "task-main" },
+          el("div", { class: "task-title" }, t.title || "Untitled task"),
+          el("div", { class: "meta" },
+            el("span", { class: "chip" }, t.type), " ",
+            t.steps && t.steps.length ? plural(t.steps.length, "step") + " · " : "",
+            t.location || "No location")),
+        el("div", { class: "fee" }, usdc(t.fee),
+          el("small", null, plural(t.bidCount || 0, "bid"),
+            t.maxRunners > 1 ? " · " + t.accepted + "/" + t.maxRunners + " runners" : "")));
+      return row;
+    });
+    mount(header, el("div", { class: "list" }, rows));
+  }
+
+  function renderTask(t) {
+    const back = el("button", { class: "btn", onclick: () => load(back, "list_tasks") }, "← All tasks");
+    const stat = (label, value) => el("div", null,
+      el("span", { class: "stat-label" }, label), el("span", { class: "stat-value" }, value));
+
+    const steps = (t.steps || []).map((s) =>
+      el("li", { class: s.status === "completed" ? "done" : "" },
+        el("div", { class: "step-body" }, s.action,
+          s.proofType && s.proofType !== "none" ? [" ", el("span", { class: "chip" }, s.proofType + " proof")] : null,
+          s.locationAddr ? el("div", { class: "meta" }, s.locationAddr) : null,
+          s.requirements ? el("div", { class: "meta" }, "Needs: " + s.requirements) : null)));
+
+    const bids = (t.bids || []).map((b) =>
+      el("div", { class: "bid" },
+        el("div", { class: "task-main" },
+          el("div", { class: "task-title" }, b.courierName || "Runner", b.accepted ? [" ", el("span", { class: "chip" }, "accepted")] : null),
+          el("div", { class: "meta" },
+            "★ " + (typeof b.courierScore === "number" ? b.courierScore.toFixed(1) : "–"),
+            " · " + plural(b.courierDeliveries || 0, "job"),
+            typeof b.tripKm === "number" ? " · " + b.tripKm.toFixed(1) + " km" : ""),
+          b.comment ? el("div", null, b.comment) : null,
+          el("div", { class: "id" }, b._id)),
+        el("div", { class: "fee" }, usdc(b.fee))));
+
+    mount(
+      el("header", null, el("h1", null, t.title || "Untitled task"), back),
+      el("div", { class: "stats" },
+        stat("Fee per runner", usdc(t.suggestedFee)),
+        stat("In escrow", usdc(t.totalEscrowed)),
+        stat("Status", t.status || "–"),
+        stat("Runners", (t.acceptedCount || 0) + "/" + (t.maxRunners || 1))),
+      el("div", { class: "meta" }, el("span", { class: "chip" }, t.taskType || "delivery"), " ",
+        t.locationAddr || t.pickupAddr || "",
+        t.dropoffAddr ? " → " + t.dropoffAddr : ""),
+      t.details ? el("p", null, t.details) : null,
+      steps.length ? [el("h2", null, "Steps"), el("ol", { class: "steps" }, steps)] : null,
+      el("h2", null, "Bids · " + bids.length),
+      bids.length ? bids : el("p", { class: "empty" }, "No bids yet."),
+      el("h2", null, "Task ID"),
+      el("div", { class: "id" }, t._id));
+  }
+
+  // ── Start ──
+  if (host === window) {
+    showMessage("This board opens inside a chat that supports MCP Apps.");
+    return;
+  }
+
+  // Keep the chat's iframe as tall as the content.
+  let lastHeight = 0;
+  new ResizeObserver(() => {
+    const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    if (height !== lastHeight) notify("ui/notifications/size-changed", { height: (lastHeight = height) });
+  }).observe(document.documentElement);
+
+  request("ui/initialize", {
+    appInfo: { name: "rico-tasks", version: "1.0.0" },
+    appCapabilities: {},
+    protocolVersion: PROTOCOL_VERSION,
+  }).then((init) => {
+    applyHostContext(init && init.hostContext);
+    notify("ui/notifications/initialized", {});
+  }).catch((e) => showMessage("Could not connect to the chat: " + e.message, "error"));
+})();
+</script>
+</body>
+</html>

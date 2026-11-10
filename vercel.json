@@ -2,7 +2,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/mcp.js": { "maxDuration": 60, "includeFiles": "mcp-server/**" }
+  },
   "rewrites": [
-    { "source": "/((?!\\.well-known/|assets/|og\\.|logo\\.).*)", "destination": "/index.html" }
+    { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/((?!\\.well-known/|assets/|api/|og\\.|logo\\.).*)", "destination": "/index.html" }
   ]
 }
