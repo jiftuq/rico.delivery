@@ -3,10 +3,15 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Auto-release delivered tasks to courier after 2h (every 5 min check)
-crons.interval("auto-release delivered tasks", { minutes: 5 }, internal.payments.processAutoRelease);
+// Pay runners whose delivery went unconfirmed for 2 hours
+crons.interval("auto-release delivered tasks", { minutes: 5 }, internal.tasks.autoRelease);
 
-// Auto-refund stuck in_progress tasks after 4h (every 5 min check)
-crons.interval("auto-refund stuck tasks", { minutes: 5 }, internal.payments.processRefunds);
+// Refund work that was accepted but not delivered within 4 hours
+crons.interval("auto-refund stuck tasks", { minutes: 5 }, internal.tasks.refundStuck);
+
+// Pick up withdrawals still waiting on a receipt, or left behind by a crash
+crons.interval("process withdrawals", { minutes: 5 }, internal.payments.processWithdrawals);
+
+crons.interval("purge expired sign-ins", { hours: 6 }, internal.auth.purgeExpired);
 
 export default crons;

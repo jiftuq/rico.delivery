@@ -2,12 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name="langchain-rico",
-    version="0.2.0",
+    version="0.3.0",
     description="LangChain toolkit for RICO — let AI agents post tasks for humans in the physical world",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="RICO",
-    url="https://github.com/jiftuq/dropzone",
+    url="https://github.com/jiftuq/rico.delivery",
     packages=find_packages(),
     python_requires=">=3.9",
     install_requires=[
@@ -15,7 +15,6 @@ setup(
         "langchain-core>=0.2.0",
     ],
     extras_require={
-        "x402": ["eth-account>=0.11.0"],
         "agentkit": ["coinbase-agentkit", "coinbase-agentkit-langchain"],
         "langchain": ["langchain-openai", "langgraph"],
     },

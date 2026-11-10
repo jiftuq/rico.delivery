@@ -5,7 +5,9 @@ export default defineSchema({
   users: defineTable({
     walletAddress: v.string(),
     displayName: v.string(),
-    balance: v.float64(),
+    balance: v.float64(), // legacy, unused: see balanceMicro
+    // Prepaid balance in micro-USDC (1 USDC = 1_000_000). Always an integer.
+    balanceMicro: v.optional(v.number()),
     score: v.float64(),
     totalRatings: v.number(),
     ratingSum: v.number(),
@@ -68,7 +70,11 @@ export default defineSchema({
     itemCost: v.optional(v.float64()), // optional for non-delivery tasks
     suggestedFee: v.float64(),
     acceptedFee: v.optional(v.float64()),
-    totalEscrowed: v.float64(),
+    totalEscrowed: v.float64(), // display copy of escrowMicro
+    // Funds actually held for this task, in micro-USDC, debited from the
+    // poster's balance. Missing on tasks created before prepaid balances.
+    escrowMicro: v.optional(v.number()),
+    feeMicro: v.optional(v.number()), // platform fee kept so far
     // Multi-runner support
     maxRunners: v.optional(v.number()), // default 1; >1 = multi-runner task
     acceptedCount: v.optional(v.number()), // how many runners accepted so far
@@ -91,7 +97,8 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_poster", ["posterId"])
-    .index("by_courier", ["courierId"]),
+    .index("by_courier", ["courierId"])
+    .index("by_paymentTx", ["paymentTx"]),
 
   bids: defineTable({
     taskId: v.id("tasks"),
@@ -136,7 +143,8 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_runner", ["runnerId"])
-    .index("by_task_runner", ["taskId", "runnerId"]),
+    .index("by_task_runner", ["taskId", "runnerId"])
+    .index("by_status", ["status"]),
 
   // Proof files — photos/videos uploaded by runners
   proofFiles: defineTable({
@@ -173,6 +181,67 @@ export default defineSchema({
     usedCount: v.number(),
   })
     .index("by_user", ["userId"]),
+
+  // ── Auth ──
+  // One-time sign-in messages a wallet must sign to prove ownership.
+  authChallenges: defineTable({
+    nonce: v.string(),
+    walletAddress: v.string(),
+    message: v.string(),
+    expiresAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
+  // Web sessions and API keys. Only the SHA-256 hash of a token is stored.
+  authTokens: defineTable({
+    userId: v.id("users"),
+    tokenHash: v.string(),
+    kind: v.string(), // "session" | "apiKey"
+    label: v.optional(v.string()),
+    hint: v.optional(v.string()), // last 4 characters, to tell keys apart
+    createdAt: v.number(),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_hash", ["tokenHash"])
+    .index("by_user", ["userId"]),
+
+  // ── Prepaid balance ──
+  // Verified on-chain USDC transfers into the platform wallet. One row per tx.
+  deposits: defineTable({
+    userId: v.id("users"),
+    txHash: v.string(), // lowercase
+    amountMicro: v.number(),
+    blockNumber: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_tx", ["txHash"])
+    .index("by_user", ["userId"]),
+
+  // On-chain payouts from the platform wallet, processed one at a time.
+  withdrawals: defineTable({
+    userId: v.id("users"),
+    to: v.string(),
+    amountMicro: v.number(),
+    reason: v.string(), // "user" | "payout"
+    // pending -> sending -> sent | failed (refunded) | review (needs a human)
+    status: v.string(),
+    txHash: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_user", ["userId"]),
+
+  // Every balance change, signed, with the balance after it.
+  ledger: defineTable({
+    userId: v.id("users"),
+    amountMicro: v.number(),
+    kind: v.string(), // deposit, escrow, refund, payout, withdrawal, withdrawal_refund
+    taskId: v.optional(v.id("tasks")),
+    ref: v.optional(v.string()),
+    balanceAfter: v.number(),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   ratings: defineTable({
     taskId: v.id("tasks"),

@@ -2,17 +2,16 @@
 Example: Plain LangChain agent with RICO workflow tools (no AgentKit needed).
 
 This works with any LLM and doesn't require Coinbase AgentKit.
-The agent's wallet private key handles x402 USDC payments directly.
+Tasks are paid from your prepaid RICO balance (top it up at rico.delivery under Wallet).
 
 Every task is a workflow: ordered steps with actions, locations, and proof types.
 
 Requirements:
-    pip install langchain-rico[langchain,x402]
+    pip install langchain-rico[langchain]
 
 Environment:
     OPENAI_API_KEY=sk-...
-    RICO_URL=https://your-deployment.convex.site
-    RICO_PRIVATE_KEY=0x...  (wallet with USDC on Base)
+    RICO_API_KEY=rico_...  (create at rico.delivery under Wallet)
 """
 
 from langchain_openai import ChatOpenAI
@@ -43,17 +42,17 @@ if __name__ == "__main__":
         # Moving furniture (workflow: 4 steps, 2 runners, requires van)
         "I bought a couch on marketplace at Rue Neuve 45 Brussels. "
         "I need 2 movers with a van to pick it up and bring it to Avenue Louise 120. "
-        "My poster ID is abc123.",
+        "",
 
         # Price comparison (workflow: 3 steps at different stores)
         "Check the price of iPhone 16 at 3 stores near Grand Place Brussels: "
         "FNAC, MediaMarkt, and Apple Store. Take a photo of each price tag. "
-        "My poster ID is abc123.",
+        "",
 
         # Verification (workflow: 2 steps)
         "Verify that Jean Dupont lives at Rue du Marché 18, Brussels. "
         "Go to the address, confirm the name on the mailbox, and take a photo. "
-        "My poster ID is abc123.",
+        "",
     ]
 
     result = agent.invoke({

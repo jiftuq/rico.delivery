@@ -77,8 +77,16 @@ export async function switchWallet(): Promise<string> {
   return connectWallet();
 }
 
-export async function payUSDC(amountUSDC: number): Promise<string> {
-  if (!PLATFORM_WALLET) throw new Error("Platform wallet not configured");
+/** Ask the wallet to sign a plain message (used to sign in; costs nothing). */
+export async function signMessage(address: string, message: string): Promise<string> {
+  const account = address as `0x${string}`;
+  return await getWalletClient(account).signMessage({ account, message });
+}
+
+/** Send USDC from the connected wallet to the RICO deposit address. */
+export async function payUSDC(amountUSDC: number, depositAddress?: string | null): Promise<string> {
+  const to = (depositAddress || PLATFORM_WALLET) as `0x${string}`;
+  if (!to) throw new Error("Deposit address not configured");
   await ensureBaseChain();
   if (!_walletClient?.account) {
     const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
@@ -91,7 +99,7 @@ export async function payUSDC(amountUSDC: number): Promise<string> {
     address: USDC_ADDRESS,
     abi: ERC20_ABI,
     functionName: "transfer",
-    args: [PLATFORM_WALLET, amount],
+    args: [to, amount],
     account: _walletClient!.account!,
   });
 
@@ -103,7 +111,3 @@ export async function payUSDC(amountUSDC: number): Promise<string> {
 
   return hash;
 }
-
-// Derive the HTTP actions URL from the Convex deployment URL
-const convexUrl = import.meta.env.VITE_CONVEX_URL ?? "";
-export const SERVER_URL = convexUrl.replace(/\.cloud$/, ".site");

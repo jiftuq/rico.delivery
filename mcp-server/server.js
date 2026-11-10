@@ -1,141 +1,48 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { createWalletClient, http, parseUnits, encodeFunctionData } from "viem";
-import { base } from "viem/chains";
-import { privateKeyToAccount } from "viem/accounts";
 
 // ── Config ──
-const CONVEX_SITE_URL = process.env.RICO_URL || "https://cool-rooster-544.convex.site";
-// Agent's wallet private key (0x...). Set per server instance by createRicoServer,
-// so a hosted endpoint can run without ever touching the wallet.
-let PRIVATE_KEY;
+const API_URL = (process.env.RICO_URL || "https://cool-rooster-544.convex.site").replace(/\/$/, "");
 const VERSION = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 // MCP Apps: tools that carry _meta.ui.resourceUri render this HTML in the chat.
 const TASKS_UI_URI = "ui://rico/tasks.html";
 const UI_MIME_TYPE = "text/html;profile=mcp-app";
 const TASKS_UI_HTML = readFileSync(new URL("./ui/tasks.html", import.meta.url), "utf8");
-const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const USDC_DECIMALS = 6;
+
+const NO_KEY =
+  "No RICO API key configured. Create one at rico.delivery under Wallet, then set RICO_API_KEY " +
+  "(local server) or add ?key=<your key> to the connector URL (remote server).";
 
 // ── Helpers ──
 
-async function apiCall(path, body) {
-  const url = `${CONVEX_SITE_URL}${path}`;
-
-  // First call — may get 402
-  const res1 = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (res1.status !== 402) {
-    return { status: res1.status, data: await res1.json() };
-  }
-
-  // 402 — need to pay
-  if (!PRIVATE_KEY) {
-    return { status: 402, data: { error: "Payment required but no RICO_PRIVATE_KEY configured" } };
-  }
-
-  const paymentInfo = await res1.json();
-  const requirements = paymentInfo.accepts?.[0];
-  if (!requirements) {
-    return { status: 402, data: { error: "No payment requirements in 402 response" } };
-  }
-
-  // Sign x402 payment
-  const paymentHeader = await signX402Payment(requirements);
-
-  // Retry with payment
-  const res2 = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Payment": paymentHeader,
-    },
-    body: JSON.stringify(body),
-  });
-
-  return { status: res2.status, data: await res2.json() };
-}
-
-async function signX402Payment(requirements) {
-  const account = privateKeyToAccount(PRIVATE_KEY);
-  const client = createWalletClient({
-    account,
-    chain: base,
-    transport: http(),
-  });
-
-  const amount = BigInt(requirements.maxAmountRequired);
-  const payTo = requirements.payTo;
-  const nonce = BigInt("0x" + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, "0")).join(""));
-  const validAfter = 0n;
-  const validBefore = BigInt(Math.floor(Date.now() / 1000) + (requirements.maxTimeoutSeconds || 300));
-
-  // EIP-712 typed data for TransferWithAuthorization (EIP-3009)
-  const domain = {
-    name: requirements.extra?.name || "USD Coin",
-    version: requirements.extra?.version || "2",
-    chainId: 8453n,
-    verifyingContract: USDC_ADDRESS,
-  };
-
-  const types = {
-    TransferWithAuthorization: [
-      { name: "from", type: "address" },
-      { name: "to", type: "address" },
-      { name: "value", type: "uint256" },
-      { name: "validAfter", type: "uint256" },
-      { name: "validBefore", type: "uint256" },
-      { name: "nonce", type: "bytes32" },
-    ],
-  };
-
-  const message = {
-    from: account.address,
-    to: payTo,
-    value: amount,
-    validAfter,
-    validBefore,
-    nonce,
-  };
-
-  const signature = await client.signTypedData({ domain, types, primaryType: "TransferWithAuthorization", message });
-
-  // Build x402 payment payload
-  const payload = {
-    x402Version: 1,
-    scheme: "exact",
-    network: "base",
-    payload: {
-      signature,
-      authorization: {
-        from: account.address,
-        to: payTo,
-        value: amount.toString(),
-        validAfter: validAfter.toString(),
-        validBefore: validBefore.toString(),
-        nonce: nonce.toString(),
+/** Call the RICO HTTP API. Returns { ok, status, data }. */
+async function api(method, path, { body, apiKey, auth = false } = {}) {
+  if (auth && !apiKey) return { ok: false, status: 401, data: { error: NO_KEY } };
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
-    },
-  };
-
-  return btoa(JSON.stringify(payload));
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({ error: `Unexpected response (HTTP ${res.status})` }));
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: `Could not reach RICO: ${e.message}` } };
+  }
 }
 
-async function convexQuery(functionName, args) {
-  // Use Convex HTTP query endpoint
-  const url = `${CONVEX_SITE_URL.replace(".site", ".cloud")}/api/query`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: functionName, args }),
-  });
-  return await res.json();
+/** Turn an API response into a tool result, flagging failures as errors. */
+function toolResult({ ok, status, data }) {
+  if (ok) return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+  const hint = status === 402
+    ? " Add USDC to the balance at rico.delivery under Wallet, or send USDC from the account's wallet to the deposit address shown by get_balance and call claim_deposit."
+    : "";
+  return { isError: true, content: [{ type: "text", text: `${data?.error || `Request failed (HTTP ${status})`}${hint}` }] };
 }
 
 // ── MCP Server ──
@@ -143,18 +50,17 @@ async function convexQuery(functionName, args) {
 /**
  * Build a RICO MCP server.
  * @param {object} [opts]
- * @param {boolean} [opts.allowWallet=true] Use RICO_PRIVATE_KEY to pay x402 requests.
+ * @param {string} [opts.apiKey] RICO API key the tools act with. Reads work without one.
  * @param {number} [opts.maxWaitSeconds=90] Upper bound for wait_for_bids.
  */
-export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {}) {
-
+export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSeconds = 90 } = {}) {
   const server = new McpServer({ name: "rico", version: VERSION });
-  PRIVATE_KEY = allowWallet ? process.env.RICO_PRIVATE_KEY : undefined;
+  const call = (method, path, body) => api(method, path, { body, apiKey, auth: true });
 
   // Tool: Post a workflow-based task
   server.tool(
     "post_task",
-    "Post a workflow-based task on RICO. Every task is a sequence of steps. Each step has an action, optional location, proof type, and requirements. Payment in USDC on Base via x402. Always prefer using 'steps' to define the workflow.",
+    "Post a workflow-based task on RICO for a human runner. Every task is a sequence of steps. Each step has an action, optional location, proof type, and requirements. The escrow (fee x runners, plus item cost) is taken from the account's prepaid USDC balance; posting fails if the balance is too low. Always prefer using 'steps' to define the workflow.",
     {
       title: z.string().describe("Short task title"),
       // Workflow steps (preferred way to define tasks)
@@ -187,7 +93,6 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
       suggestedFee: z.number().describe("Fee per runner in USDC"),
       maxRunners: z.number().optional().describe("Number of runners needed (default 1, max 100)"),
       privacyZone: z.number().optional().describe("Privacy zone radius in meters (100-500)"),
-      posterId: z.string().describe("Convex user ID of the poster"),
     },
     async (args) => {
       const body = { ...args, category: args.category || args.taskType };
@@ -214,10 +119,7 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
           body.locationLng = body.locationLng || locs[0].locationLng || 4.35;
         }
       }
-      const result = await apiCall("/task", body);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result.data, null, 2) }],
-      };
+      return toolResult(await call("POST", "/task", body));
     }
   );
 
@@ -248,11 +150,9 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
       _meta: tasksUiMeta,
     },
     async () => {
-      const result = await convexQuery("tasks:listOpen", {});
-      if (result.status === "error") {
-        return { isError: true, content: [{ type: "text", text: `Could not list tasks: ${result.errorMessage}` }] };
-      }
-      const tasks = (result.value || []).map(t => ({
+      const result = await api("GET", "/tasks");
+      if (!result.ok) return toolResult(result);
+      const tasks = (result.data.tasks || []).map(t => ({
         id: t._id,
         title: t.title,
         type: t.taskType || "delivery",
@@ -288,17 +188,14 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
       _meta: tasksUiMeta,
     },
     async ({ taskId }) => {
-      const [task, bids] = await Promise.all([
-        convexQuery("tasks:getTask", { taskId }),
-        convexQuery("tasks:getBids", { taskId }),
-      ]);
-      if (task.status === "error" || !task.value) {
+      const result = await api("GET", `/task?id=${encodeURIComponent(taskId)}`);
+      if (!result.ok) {
         return {
           isError: true,
           content: [{ type: "text", text: `Task "${taskId}" not found. Use list_tasks to get valid task IDs.` }],
         };
       }
-      const detail = { ...task.value, bids: bids.value || [] };
+      const detail = result.data;
       return {
         content: [{ type: "text", text: JSON.stringify(detail, null, 2) }],
         structuredContent: { view: "task", task: detail },
@@ -309,78 +206,72 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
   // Tool: Place a bid on a task
   server.tool(
     "place_bid",
-    "Place a bid on an open task as a runner.",
+    "Place a bid on an open task as a runner. You cannot bid on your own task.",
     {
       taskId: z.string().describe("Task ID to bid on"),
-      courierId: z.string().describe("Your Convex user ID"),
-      fee: z.number().describe("Your proposed fee in USDC"),
+      fee: z.number().positive().describe("Your proposed fee in USDC"),
       comment: z.string().optional().describe("Why you're a good fit"),
-      lat: z.number().describe("Your current latitude"),
-      lng: z.number().describe("Your current longitude"),
-      tripKm: z.number().describe("Estimated trip distance in km"),
+      lat: z.number().optional().describe("Your current latitude"),
+      lng: z.number().optional().describe("Your current longitude"),
+      tripKm: z.number().optional().describe("Estimated trip distance in km"),
     },
-    async (args) => {
-      // placeBid is a mutation, call it via the HTTP action would be complex
-      // For now, return instructions
-      return {
-        content: [{
-          type: "text",
-          text: `To place a bid, the runner needs to use the RICO web UI or call the Convex mutation directly.\n\nBid details:\n${JSON.stringify(args, null, 2)}`
-        }],
-      };
-    }
+    async (args) => toolResult(await call("POST", "/bid", args))
   );
 
   // Tool: Accept a bid (poster only)
   server.tool(
     "accept_bid",
-    "Accept a runner's bid on your task. May require additional USDC payment if bid exceeds original escrow.",
+    "Accept a runner's bid on your task. If the bid is above the suggested fee the difference is taken from your balance; if below, it is returned.",
     {
       taskId: z.string().describe("Task ID"),
-      bidId: z.string().describe("Bid ID to accept"),
-      posterId: z.string().describe("Your Convex user ID (must be the poster)"),
+      bidId: z.string().describe("Bid ID to accept (from get_task or wait_for_bids)"),
     },
-    async (args) => {
-      const result = await apiCall("/accept-bid", args);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result.data, null, 2) }],
-      };
-    }
+    async (args) => toolResult(await call("POST", "/accept-bid", args))
   );
 
   // Tool: Confirm delivery and pay runner
   server.tool(
     "confirm_delivery",
-    "Confirm a runner completed the task and release USDC payment.",
+    "Confirm a runner completed your task and release the escrowed USDC to them. This cannot be undone: check the proof first.",
     {
       taskId: z.string().describe("Task ID"),
-      posterId: z.string().describe("Your Convex user ID"),
       runnerId: z.string().optional().describe("Runner ID (required for multi-runner tasks)"),
       ratingScore: z.number().min(1).max(5).optional().describe("Rating 1-5"),
       ratingComment: z.string().optional().describe("Review comment"),
     },
-    async (args) => {
-      const result = await apiCall("/confirm-delivery", args);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result.data, null, 2) }],
-      };
-    }
+    async (args) => toolResult(await call("POST", "/confirm-delivery", args))
   );
 
   // Tool: Cancel a task and get refund
   server.tool(
     "cancel_task",
-    "Cancel an open task and get escrowed USDC refunded.",
+    "Cancel one of your open tasks. The escrow returns to your RICO balance. Not possible once a runner has been accepted.",
     {
       taskId: z.string().describe("Task ID to cancel"),
-      posterId: z.string().describe("Your Convex user ID"),
     },
-    async (args) => {
-      const result = await apiCall("/cancel-task", args);
-      return {
-        content: [{ type: "text", text: JSON.stringify(result.data, null, 2) }],
-      };
-    }
+    async (args) => toolResult(await call("POST", "/cancel-task", args))
+  );
+
+  // Tool: Balance
+  server.registerTool(
+    "get_balance",
+    {
+      title: "Get RICO balance",
+      description: "Show the account's prepaid USDC balance, the address to deposit USDC to, and recent balance activity.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async () => toolResult(await call("GET", "/me"))
+  );
+
+  // Tool: Claim a deposit
+  server.tool(
+    "claim_deposit",
+    "Credit a USDC transfer to the balance. The transfer must already be confirmed on Base, sent from the account's own wallet to the deposit address shown by get_balance. Each transaction can be claimed once.",
+    {
+      txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).describe("Transaction hash of the USDC transfer on Base"),
+    },
+    async (args) => toolResult(await call("POST", "/deposit", args))
   );
 
   // Tool: Check health
@@ -390,7 +281,7 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
     {},
     async () => {
       try {
-        const res = await fetch(`${CONVEX_SITE_URL}/health`);
+        const res = await fetch(`${API_URL}/health`);
         const data = await res.json();
         return { content: [{ type: "text", text: JSON.stringify(data) }] };
       } catch (e) {
@@ -409,7 +300,7 @@ export function createRicoServer({ allowWallet = true, maxWaitSeconds = 90 } = {
     },
     async ({ taskId, timeoutSeconds }) => {
       const timeout = Math.min(timeoutSeconds || 60, maxWaitSeconds) * 1000;
-      const url = `${CONVEX_SITE_URL}/subscribe/bids?taskId=${encodeURIComponent(taskId)}`;
+      const url = `${API_URL}/subscribe/bids?taskId=${encodeURIComponent(taskId)}`;
 
       try {
         const controller = new AbortController();

@@ -63,7 +63,6 @@ class PostTaskInput(BaseModel):
     # Pricing
     suggested_fee: float = Field(default=5.0, description="Fee per runner in USDC")
     max_runners: int = Field(default=1, description="Number of runners needed (1-100). Use >1 for moving, flash mobs, cross-validation.")
-    poster_id: str = Field(description="Your Convex user ID (get it by connecting wallet on rico.delivery)")
 
 
 class GetTaskInput(BaseModel):
@@ -75,13 +74,11 @@ class AcceptBidInput(BaseModel):
     """Input for accepting a runner's bid."""
     task_id: str = Field(description="Task ID")
     bid_id: str = Field(description="Bid ID to accept")
-    poster_id: str = Field(description="Your Convex user ID (must be the poster)")
 
 
 class ConfirmDeliveryInput(BaseModel):
     """Input for confirming task completion."""
     task_id: str = Field(description="Task ID")
-    poster_id: str = Field(description="Your Convex user ID")
     runner_id: Optional[str] = Field(default=None, description="Runner ID (required for multi-runner tasks)")
     rating_score: Optional[int] = Field(default=None, description="Rating 1-5")
     rating_comment: Optional[str] = Field(default=None, description="Review comment")
@@ -90,7 +87,6 @@ class ConfirmDeliveryInput(BaseModel):
 class CancelTaskInput(BaseModel):
     """Input for cancelling a task."""
     task_id: str = Field(description="Task ID to cancel")
-    poster_id: str = Field(description="Your Convex user ID")
 
 
 # ── Tools ──
@@ -111,7 +107,7 @@ class PostTaskTool(BaseTool):
     - Organize a flash mob or stand-in (go-somewhere × many runners)
     - Count cars, people, or events (gather-info + text)
 
-    Payment is in USDC on Base. The fee is escrowed automatically via x402.
+    The fee is escrowed from the account's prepaid USDC balance; posting fails if it is too low.
     Always prefer using 'steps' to define the workflow rather than flat fields.
     """
 
@@ -120,7 +116,7 @@ class PostTaskTool(BaseTool):
         "Post a workflow-based task on RICO for humans to complete in the physical world. "
         "Define the task as a sequence of steps (action, location, proof_type, requirements). "
         "Handles delivery, moving, info gathering, verification, physical actions, and more. "
-        "Payment in USDC on Base, escrowed via x402 protocol."
+        "The fee is escrowed from the account's prepaid USDC balance."
     )
     args_schema: Type[BaseModel] = PostTaskInput
     client: object = None  # Rico instance
@@ -180,8 +176,8 @@ class AcceptBidTool(BaseTool):
     args_schema: Type[BaseModel] = AcceptBidInput
     client: object = None
 
-    def _run(self, task_id: str, bid_id: str, poster_id: str) -> str:
-        result = self.client.accept_bid(task_id, bid_id, poster_id)
+    def _run(self, task_id: str, bid_id: str) -> str:
+        result = self.client.accept_bid(task_id, bid_id)
         return json.dumps(result, indent=2)
 
 
@@ -196,10 +192,10 @@ class ConfirmDeliveryTool(BaseTool):
     args_schema: Type[BaseModel] = ConfirmDeliveryInput
     client: object = None
 
-    def _run(self, task_id: str, poster_id: str, runner_id: str = None,
+    def _run(self, task_id: str, runner_id: str = None,
              rating_score: int = None, rating_comment: str = None) -> str:
         result = self.client.confirm_delivery(
-            task_id, poster_id, runner_id, rating_score, rating_comment
+            task_id, runner_id, rating_score, rating_comment
         )
         return json.dumps(result, indent=2)
 
@@ -212,6 +208,6 @@ class CancelTaskTool(BaseTool):
     args_schema: Type[BaseModel] = CancelTaskInput
     client: object = None
 
-    def _run(self, task_id: str, poster_id: str) -> str:
-        result = self.client.cancel_task(task_id, poster_id)
+    def _run(self, task_id: str) -> str:
+        result = self.client.cancel_task(task_id)
         return json.dumps(result, indent=2)

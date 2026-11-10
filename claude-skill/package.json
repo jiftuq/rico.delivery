@@ -13,8 +13,7 @@
     "physical-world",
     "workflows",
     "usdc",
-    "base",
-    "x402"
+    "base"
   ],
   "repository": {
     "type": "git",

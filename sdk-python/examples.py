@@ -7,10 +7,9 @@ from rico import Rico
 
 gigs = Rico(
     url="https://your-deployment.convex.site",
-    private_key="0x...",  # Fund this wallet with USDC on Base
+    api_key="rico_...",  # Create at rico.delivery under Wallet; tasks spend your prepaid balance
 )
 
-POSTER_ID = "your_convex_user_id"  # Get this by connecting wallet on rico.delivery
 
 
 # ── 1. Shopping Agent ──
@@ -34,7 +33,6 @@ def shopping_agent():
             action="Find Coca-Cola 1.5L bottle, photograph the price tag",
             proof_type="photo",
             suggested_fee=3.0,
-            poster_id=POSTER_ID,
         )
     # Step 2: After runners report back, agent picks cheapest store
     # Step 3: Post delivery task from cheapest store to home
@@ -54,7 +52,6 @@ def verification_agent(person_name, address, lat, lng):
         proof_type="photo",
         target_person=person_name,
         suggested_fee=10.0,
-        poster_id=POSTER_ID,
     )
 
 
@@ -72,7 +69,6 @@ def event_agent():
         proof_type="gps",
         suggested_fee=5.0,
         max_runners=50,
-        poster_id=POSTER_ID,
     )
 
 
@@ -89,7 +85,6 @@ def research_agent():
         action="Go inside, photograph every page of the menu (front, back, drinks, desserts). Submit all photos.",
         proof_type="photo",
         suggested_fee=8.0,
-        poster_id=POSTER_ID,
     )
 
 
@@ -107,7 +102,6 @@ def negotiation_agent():
         proof_type="text",
         target_person="Any tulip vendor",
         suggested_fee=12.0,
-        poster_id=POSTER_ID,
     )
 
 
@@ -124,7 +118,6 @@ def maintenance_agent():
         action="Go to room 204, find the electrical panel, flip breaker #7 to ON position. Take a photo of the panel after.",
         proof_type="photo",
         suggested_fee=15.0,
-        poster_id=POSTER_ID,
     )
 
 
@@ -142,7 +135,6 @@ def surveillance_agent():
         proof_type="text",
         suggested_fee=20.0,
         max_runners=3,  # 3 runners for cross-validation
-        poster_id=POSTER_ID,
     )
 
 
@@ -163,7 +155,6 @@ def moving_agent():
         item_cost=0,  # Already paid for the furniture
         suggested_fee=40.0,
         max_runners=3,  # 3 movers for heavy items
-        poster_id=POSTER_ID,
     )
 
 

@@ -88,7 +88,7 @@ Fee: $5-15
 4. Set maxRunners > 1 for tasks needing multiple people
 5. Be specific in step actions — "Pick up 2 large pizzas from Mario's" not just "pick up food"
 6. Include locationAddr on steps that require going somewhere specific
-7. If the user doesn't have a posterId, tell them to connect their wallet at rico.delivery first
+7. If a call fails with 401, tell the user to create an API key at rico.delivery under Wallet. If it fails with 402, tell them to top up their balance there
 8. Escrow = suggestedFee × maxRunners (explain this to users)
 9. Suggest reasonable fees based on effort, distance, and time required
 10. Always confirm the workflow with the user before posting
@@ -123,4 +123,4 @@ https://rico.delivery (add /privacy if you create one)
 
 ## Actions
 
-Import the `openapi.yaml` schema. Authentication: None (x402 handles payment).
+Import the `openapi.yaml` schema. Authentication: API Key, Auth Type: Bearer. Paste a RICO API key created at rico.delivery under Wallet; tasks spend that account's prepaid balance.

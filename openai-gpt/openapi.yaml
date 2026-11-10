@@ -6,6 +6,8 @@ info:
     Deliveries, moving furniture, gathering info, verification, negotiations, and more.
     Payment in USDC on Base. Humans bid, complete each step with proof, and get paid.
   version: 1.1.0
+security:
+  - apiKey: []
 servers:
   - url: https://cool-rooster-544.convex.site
     description: RICO Production
@@ -20,7 +22,7 @@ paths:
         of steps with actions, locations, and proof requirements.
 
         The task goes live immediately. Runners in the area see it and can bid.
-        Payment is handled via x402 USDC on Base (handled automatically by the server).
+        The escrow is taken from the API key owner's prepaid USDC balance.
 
         Always use the 'steps' array to define the workflow.
       requestBody:
@@ -39,7 +41,6 @@ paths:
                   suggestedFee: 8
                   maxRunners: 1
                   privacyZone: 100
-                  posterId: "user123"
                   steps:
                     - order: 1
                       action: "Go to Café Belga"
@@ -64,7 +65,6 @@ paths:
                   suggestedFee: 30
                   maxRunners: 2
                   privacyZone: 100
-                  posterId: "user123"
                   steps:
                     - order: 1
                       action: "Come to my apartment"
@@ -94,7 +94,6 @@ paths:
                   suggestedFee: 15
                   maxRunners: 1
                   privacyZone: 100
-                  posterId: "user123"
                   steps:
                     - order: 1
                       action: "Go to FNAC and photograph iPhone 16 price"
@@ -123,7 +122,7 @@ paths:
                     type: string
                     description: The Convex task ID
         '402':
-          description: Payment required (x402 USDC on Base)
+          description: Balance too low to cover the task. Top up at rico.delivery under Wallet.
           content:
             application/json:
               schema:
@@ -140,7 +139,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [taskId, bidId, posterId]
+              required: [taskId, bidId]
               properties:
                 taskId:
                   type: string
@@ -148,9 +147,6 @@ paths:
                 bidId:
                   type: string
                   description: Bid ID to accept
-                posterId:
-                  type: string
-                  description: Your user ID (must be the poster)
       responses:
         '200':
           description: Bid accepted
@@ -176,11 +172,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [taskId, posterId]
+              required: [taskId]
               properties:
                 taskId:
-                  type: string
-                posterId:
                   type: string
                 runnerId:
                   type: string
@@ -219,11 +213,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [taskId, posterId]
+              required: [taskId]
               properties:
                 taskId:
-                  type: string
-                posterId:
                   type: string
       responses:
         '200':
@@ -256,6 +248,11 @@ paths:
                     type: boolean
 
 components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: RICO API key (rico_...), created at rico.delivery under Wallet.
   schemas:
     WorkflowStep:
       type: object
@@ -288,7 +285,7 @@ components:
 
     PostTaskRequest:
       type: object
-      required: [title, taskType, suggestedFee, posterId]
+      required: [title, category, details, taskType, suggestedFee]
       properties:
         title:
           type: string
@@ -318,9 +315,6 @@ components:
           type: integer
           default: 100
           description: Privacy zone radius in meters
-        posterId:
-          type: string
-          description: Your Convex user ID
         # Legacy flat fields (use steps instead)
         locationAddr:
           type: string

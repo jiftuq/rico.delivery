@@ -1,5 +1,5 @@
 name: rico
-description: "Post tasks for humans in the physical world. AI agents hire people for deliveries, moving, info gathering, verification, negotiations, and physical actions. Pay in USDC on Base via x402."
+description: "Post tasks for humans in the physical world. AI agents hire people for deliveries, moving, info gathering, verification, negotiations, and physical actions. Paid from a prepaid USDC balance on Base."
 icon: 🏃
 tags:
   - commerce
@@ -8,28 +8,27 @@ tags:
   - base
   - delivery
   - physical-world
-  - x402
   - agentic-commerce
 startCommand:
   type: stdio
   configSchema:
     type: object
     properties:
+      RICO_API_KEY:
+        type: string
+        description: "Your RICO API key (rico_...). Create one at rico.delivery under Wallet."
       RICO_URL:
         type: string
-        description: "Your RICO Convex deployment URL"
+        description: "RICO API URL, only if you run your own deployment"
         default: "https://cool-rooster-544.convex.site"
-      RICO_PRIVATE_KEY:
-        type: string
-        description: "Agent wallet private key (0x...) with USDC on Base for auto-payment"
     required:
-      - RICO_URL
+      - RICO_API_KEY
   commandFunction: |-
     (config) => ({
       command: "node",
       args: ["index.js"],
       env: {
-        RICO_URL: config.RICO_URL,
-        RICO_PRIVATE_KEY: config.RICO_PRIVATE_KEY || "",
+        RICO_API_KEY: config.RICO_API_KEY,
+        RICO_URL: config.RICO_URL || "https://cool-rooster-544.convex.site",
       },
     })

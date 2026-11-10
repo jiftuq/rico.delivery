@@ -8,13 +8,17 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as lib_money from "../lib/money.js";
 import type * as payments from "../payments.js";
 import type * as proofs from "../proofs.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
+import type * as wallet from "../wallet.js";
 import type * as workflows from "../workflows.js";
 
 import type {
@@ -24,13 +28,17 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   chat: typeof chat;
   crons: typeof crons;
   http: typeof http;
+  "lib/auth": typeof lib_auth;
+  "lib/money": typeof lib_money;
   payments: typeof payments;
   proofs: typeof proofs;
   tasks: typeof tasks;
   users: typeof users;
+  wallet: typeof wallet;
   workflows: typeof workflows;
 }>;
 

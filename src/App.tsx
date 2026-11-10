@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
 import { Id } from "../convex/_generated/dataModel";
-import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions } from "./hooks/useRico";
+import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions, useFunds, useApiKeys } from "./hooks/useRico";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
-import { connectWallet, switchWallet, payUSDC, SERVER_URL } from "./lib/wallet";
+import { connectWallet, switchWallet } from "./lib/wallet";
+import { ensureSession, endSession, errMsg } from "./lib/session";
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -143,7 +144,7 @@ function TaskMap({pickup,dropoff,privacyZone,courierLat,courierLng,bids,userLoc,
   return <div ref={ref} style={{width:"100%",height:h,borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.05)"}}/>;
 }
 
-function ChatPanel({taskId,userId,myRole}:{taskId:Id<"tasks">;userId:Id<"users">;myRole:string}){
+function ChatPanel({taskId,myRole}:{taskId:Id<"tasks">;myRole:string}){
   const t=useLang();const{messages,send}=useChat(taskId);const[msg,setMsg]=useState("");const endRef=useRef<HTMLDivElement>(null);
   const proofFiles=useProofFiles(taskId);const[viewMedia,setViewMedia]=useState<{url:string;type:string}|null>(null);
   // Merge messages and proofs into a single timeline
@@ -155,7 +156,7 @@ function ChatPanel({taskId,userId,myRole}:{taskId:Id<"tasks">;userId:Id<"users">
     return items;
   },[messages,proofFiles]);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[timeline.length]);
-  const doSend=()=>{if(!msg.trim())return;hap.light();send(userId,msg.trim());setMsg("")};
+  const doSend=()=>{if(!msg.trim())return;hap.light();send(msg.trim());setMsg("")};
   return <div style={{borderRadius:12,border:"1px solid rgba(255,255,255,0.04)",overflow:"hidden"}}>
     <div style={{padding:"10px 14px",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.03)",fontSize:13,fontWeight:600,color:"#fff"}}>💬 {t("chat")}</div>
     <div style={{maxHeight:340,overflowY:"auto",padding:"10px 14px",WebkitOverflowScrolling:"touch"}}>
@@ -231,7 +232,7 @@ function ProfilePopup({profile,onClose}:{profile:any;onClose:()=>void}){
 }
 
 function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
-  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);const bids=useBids(task._id);const actions=useTaskActions();
+  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId,token}=useUser(walletAddr);const bids=useBids(task._id);const actions=useTaskActions();const{ensureFunds}=useFunds();
   const[open,setOpen]=useState(false);const[tab,setTab]=useState<"details"|"chat">("details");
   const[bidFee,setBidFee]=useState("");const[bidComment,setBidComment]=useState("");
   const[showRating,setShowRating]=useState<{name:string;runnerId?:string}|null>(null);const[profileId,setProfileId]=useState<Id<"users">|null>(null);
@@ -254,14 +255,15 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const locLat=isDel?task.pickupLat:(task.locationLat||task.pickupLat);const locLng=isDel?task.pickupLng:(task.locationLng||task.pickupLng);const locAddr=isDel?task.pickupAddr:(task.locationAddr||task.pickupAddr||"");
   const myTrStatus=multi?taskRunners.find((tr:any)=>tr.runnerId===userId)?.status:null;
   const isActiveRunner=multi?(myTrStatus==="accepted"):!!isCourier;
-  useCourierTracking(isTracking&&isActiveRunner?task._id:null,isActiveRunner&&userId?userId:null,!!isTracking&&isActiveRunner);
+  useCourierTracking(isTracking&&isActiveRunner?task._id:null,!!isTracking&&isActiveRunner);
   useEffect(()=>{if(!open||!userLoc||task.status!=="open")return;if(isDel){getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]).then(r=>r&&setRouteKm(r.km))}else{getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]).then(r=>r&&setRouteKm(r.km))}},[open,userLoc]);
   const bidMap=bids.filter((b:any)=>b.lat&&b.lng).map((b:any)=>({name:b.courierName,lat:b.lat,lng:b.lng,fee:b.fee,score:b.courierScore}));
-  const submitBid=async()=>{if(!bidFee||!userId||!userLoc)return;let tripKm:number;if(isDel){const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10}else{const route=await getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]);tripKm=route?parseFloat(route.km):Math.round(haversine(userLoc,[locLat,locLng])*10)/10}actions.placeBid({taskId:task._id,courierId:userId,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});hap.success();setBidFee("");setBidComment("")};
-  const doAcceptBid=async(bidId:string)=>{if(!walletAddr){await connect();return;}try{const r=await fetch(`${SERVER_URL}/accept-bid`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,bidId,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.double()}catch(e:any){hap.error();alert(e.message)}};
-  const doCancel=async()=>{hap.medium();if(!confirm(`Cancel task and refund $${total.toFixed(2)} USDC?`))return;try{const r=await fetch(`${SERVER_URL}/cancel-task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taskId:task._id,posterId:userId})});if(!r.ok){const e=await r.json();throw new Error(e.error)}hap.heavy()}catch(e:any){hap.error();alert(e.message)}};
-  const doSubmitProof=()=>{if(!isCourier||!userId)return;hap.success();actions.markDelivered({taskId:task._id,courierId:userId,proofData:proofText||undefined});setProofText("")};
-  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!userId)return;hap.light();setUploading(true);try{await uploadProof(file,task._id,userId);hap.success()}catch(err:any){hap.error();alert(err.message)}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
+  const submitBid=async()=>{if(!bidFee||!token||!userLoc)return;let tripKm:number;if(isDel){const route=await getRoute([[userLoc[0],userLoc[1]],[task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]]);tripKm=route?parseFloat(route.km):Math.round((haversine(userLoc,[task.pickupLat,task.pickupLng])+haversine([task.pickupLat,task.pickupLng],[task.dropoffLat,task.dropoffLng]))*10)/10}else{const route=await getRoute([[userLoc[0],userLoc[1]],[locLat,locLng]]);tripKm=route?parseFloat(route.km):Math.round(haversine(userLoc,[locLat,locLng])*10)/10}try{await actions.placeBid({token,taskId:task._id,fee:parseFloat(bidFee),comment:bidComment||"Ready!",lat:userLoc[0],lng:userLoc[1],tripKm});hap.success();setBidFee("");setBidComment("")}catch(e:any){hap.error();alert(errMsg(e))}};
+  // A bid above the suggested fee costs the poster the difference: top up the balance first if needed.
+  const doAcceptBid=async(bidId:string)=>{if(!walletAddr||!token){await connect();return;}try{const bid=bids.find((b:any)=>b._id===bidId);const extra=bid?(multi?bid.fee-task.suggestedFee:(task.itemCost||0)+bid.fee-task.totalEscrowed):0;if(extra>0)await ensureFunds(extra);await actions.acceptBid({token,taskId:task._id,bidId:bidId as Id<"bids">});hap.double()}catch(e:any){hap.error();alert(errMsg(e))}};
+  const doCancel=async()=>{hap.medium();if(!token)return;if(!confirm(`Cancel task? $${total.toFixed(2)} USDC goes back to your RICO balance.`))return;try{await actions.cancelTask({token,taskId:task._id});hap.heavy()}catch(e:any){hap.error();alert(errMsg(e))}};
+  const doSubmitProof=()=>{if(!isCourier||!token)return;hap.success();actions.markDelivered({token,taskId:task._id,proofData:proofText||undefined}).catch((e:any)=>alert(errMsg(e)));setProofText("")};
+  const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!token)return;hap.light();setUploading(true);try{await uploadProof(file,task._id);hap.success()}catch(err:any){hap.error();alert(errMsg(err))}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
   const ProofMenu=({btnStyle}:{btnStyle:any})=><div style={{position:"relative",display:"inline-block"}}>
     <button style={btnStyle} onClick={(e)=>{e.stopPropagation();hap.tap();setShowProofMenu(!showProofMenu)}}>{uploading?"⏳":"📎 Proof"}</button>
     {showProofMenu&&<div style={{position:"absolute",bottom:"110%",left:0,zIndex:999,background:"#1a1a2e",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:6,display:"flex",flexDirection:"column",gap:4,minWidth:150,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}} onClick={e=>e.stopPropagation()}>
@@ -299,7 +301,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
 
     {open&&<div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.025)"}} onClick={e=>e.stopPropagation()}>
       {chatActive&&<div style={{display:"flex",gap:6,marginBottom:10}}><button style={{...S.tabBtn,...(tab==="details"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("details")}>📋 {t("details")}</button><button style={{...S.tabBtn,...(tab==="chat"?S.tabAct:{}),minHeight:40,fontSize:12}} onClick={()=>setTab("chat")}>💬 {t("chat")}</button></div>}
-      {tab==="chat"&&chatActive&&userId&&canSee?<ChatPanel taskId={task._id} userId={userId} myRole={isOwner?"poster":"courier"}/>:<>
+      {tab==="chat"&&chatActive&&userId&&canSee?<ChatPanel taskId={task._id} myRole={isOwner?"poster":"courier"}/>:<>
         {/* Workflow steps display */}
         {task.steps&&task.steps.length>0&&<div style={{padding:12,borderRadius:12,background:"rgba(0,255,135,0.02)",border:"1px solid rgba(0,255,135,0.08)",marginBottom:10}}>
           <div style={{fontSize:12,fontWeight:700,color:"#00ff87",marginBottom:8}}>📋 Workflow ({task.steps.length} steps)</div>
@@ -360,7 +362,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           </div>}
         </div>}
         {task.status==="in_progress"&&!multi&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>{isDel?"🚴":"🏃"} {task.courierName}</span>
-          {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>{hap.medium();actions.markDelivered({taskId:task._id,courierId:userId!})}}>📦 {t("mark_delivered")}</button>
+          {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>{hap.medium();if(token)actions.markDelivered({token,taskId:task._id}).catch((e:any)=>alert(errMsg(e)))}}>📦 {t("mark_delivered")}</button>
           :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
             {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
             <input ref={filePhotoBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
@@ -404,11 +406,11 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
             </div>)}
           </div>
         </div>}
-        {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{hap.error();const reason=prompt("Describe the issue:");if(reason&&userId)actions.openDispute({taskId:task._id,userId,reason})}}>⚠️ Open Dispute</button>}
+        {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{hap.error();const reason=prompt("Describe the issue:");if(reason&&token)actions.openDispute({token,taskId:task._id,reason}).catch((e:any)=>alert(errMsg(e)))}}>⚠️ Open Dispute</button>}
         {task.status==="disputed"&&<div style={{padding:14,borderRadius:12,background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.2)",marginTop:8}}><div style={{fontSize:13,fontWeight:700,color:"#ffa500",marginBottom:4}}>⚠️ Disputed</div><div style={{fontSize:12,color:"#999"}}>Opened by {task.disputeBy}: "{task.disputeReason}"</div><div style={{fontSize:11,color:"#666",marginTop:4}}>Funds are held until resolved. Contact support.</div></div>}
       </>}
       {profileId&&profile&&<ProfilePopup profile={profile} onClose={()=>setProfileId(null)}/>}
-      {showRating&&<RatingModal name={showRating.name} onRate={async(s,c)=>{try{const body:any={taskId:task._id,posterId:userId,ratingScore:s,ratingComment:c};if(showRating.runnerId)body.runnerId=showRating.runnerId;const r=await fetch(`${SERVER_URL}/confirm-delivery`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok){const e=await r.json();throw new Error(e.error)}}catch(e:any){alert(e.message)}}} onClose={()=>setShowRating(null)}/>}
+      {showRating&&<RatingModal name={showRating.name} onRate={async(s,c)=>{if(!token)return;try{await actions.confirmDelivery({token,taskId:task._id,ratingScore:s,ratingComment:c,runnerId:showRating.runnerId as Id<"users">|undefined})}catch(e:any){alert(errMsg(e))}}} onClose={()=>setShowRating(null)}/>}
     </div>}
   </div>;
 }
@@ -508,8 +510,8 @@ const WORKFLOW_PRESETS=[
 ];
 
 function PostView({userLoc}:{userLoc:[number,number]|null}){
-  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId}=useUser(walletAddr);
-  const savedWorkflows=useSavedWorkflows(userId);
+  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId,token}=useUser(walletAddr);const{balance,ensureFunds}=useFunds();const{createTask}=useTaskActions();
+  const savedWorkflows=useSavedWorkflows();
   const{saveWorkflow,removeWorkflow,markUsed}=useWorkflowActions();
   const[preset,setPreset]=useState<string|null>(null);
   const[title,setTitle]=useState("");
@@ -534,11 +536,11 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const loadSaved=(wf:any)=>{
     setPreset("custom");setSteps(wf.steps.map((s:any)=>({action:s.action,locationAddr:s.locationAddr||"",locationLat:s.locationLat||0,locationLng:s.locationLng||0,proofType:s.proofType||"none",requirements:s.requirements||""})));
     setMaxRunners(String(wf.defaultRunners));setTitle(wf.name);setShowSaved(false);
-    if(wf._id)markUsed({workflowId:wf._id});
+    if(wf._id&&token)markUsed({token,workflowId:wf._id});
   };
   const doSaveWorkflow=async()=>{
-    if(!saveName.trim()||!userId||steps.length===0)return;
-    await saveWorkflow({userId,name:saveName.trim(),category:wp?.cat||"custom",taskType:wp?.taskType||"gather-info",defaultRunners:nRunners,steps:steps.filter(s=>s.action.trim()).map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined}))});
+    if(!saveName.trim()||!token||steps.length===0)return;
+    await saveWorkflow({token,name:saveName.trim(),category:wp?.cat||"custom",taskType:wp?.taskType||"gather-info",defaultRunners:nRunners,steps:steps.filter(s=>s.action.trim()).map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined}))});
     setSaveName("");alert("Workflow saved!");
   };
 
@@ -554,19 +556,19 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     if(steps.length===0||steps.filter(s=>s.action.trim()).length===0)missing.push("At least one workflow step");
     if(!fee||parseFloat(fee)<=0)missing.push("Fee per runner");
     if(missing.length>0){hap.error();alert("Missing: "+missing.join(", "));return;}
-    if(!userId)return;
-    if(!walletAddr){await connect();return;}
+    if(!walletAddr||!token){await connect();return;}
     const filledSteps=steps.filter(s=>s.action.trim());
     const firstLoc=filledSteps.find(s=>s.locationAddr);
     const lastLoc=[...filledSteps].reverse().find(s=>s.locationAddr);
     const isDel=wp?.taskType==="delivery"&&filledSteps.filter(s=>s.locationAddr).length>=2;
     try{
       setPaying(true);
-      const txHash=await payUSDC(total);
+      // Escrow comes out of the prepaid balance; top it up from the wallet if it is short.
+      await ensureFunds(total);
       const body:any={
         title,category:wp?.cat||"custom",details:details||filledSteps.map((s,i)=>`${i+1}. ${s.action}`).join(" → "),
         taskType:wp?.taskType||"gather-info",privacyZone:parseInt(privacyZone)||100,
-        suggestedFee:feePerRunner,maxRunners:nRunners,posterId:userId,paymentTx:txHash,
+        suggestedFee:feePerRunner,maxRunners:nRunners,token,
         steps:filledSteps.map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined,status:"pending"})),
       };
       if(isDel&&firstLoc&&lastLoc){
@@ -577,11 +579,10 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
         body.locationAddr=firstLoc.locationAddr;body.locationLat=firstLoc.locationLat||50.85;body.locationLng=firstLoc.locationLng||4.35;
         body.action=filledSteps.map(s=>s.action).join(" → ");body.proofType=filledSteps.find(s=>s.proofType!=="none")?.proofType||"photo";
       }
-      const res=await fetch(`${SERVER_URL}/task`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      if(!res.ok){const e=await res.json();throw new Error(e.error);}
+      await createTask(body);
       hap.success();setOk(true);setTimeout(()=>setOk(false),3500);
       setPreset(null);setTitle("");setSteps([]);setFee("");setMaxRunners("1");setDetails("");
-    }catch(e:any){hap.error();alert(e.message);}finally{setPaying(false);}
+    }catch(e:any){hap.error();alert(errMsg(e));}finally{setPaying(false);}
   };
 
   const presetBtnS=(active:boolean):any=>({padding:"10px 14px",borderRadius:12,border:active?"1px solid #00ff87":"1px solid rgba(255,255,255,0.06)",background:active?"rgba(0,255,135,0.06)":"rgba(255,255,255,0.015)",color:active?"#00ff87":"#999",fontSize:12,fontWeight:active?700:500,fontFamily:"'Outfit',sans-serif",textAlign:"left" as const,whiteSpace:"nowrap"});
@@ -599,7 +600,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       {showSaved&&<div style={{display:"grid",gridTemplateColumns:"1fr",gap:4,marginTop:6}}>
         {savedWorkflows.map((wf:any)=><div key={wf._id} style={{display:"flex",gap:6,alignItems:"center",padding:"10px 14px",borderRadius:10,background:"rgba(0,82,255,0.03)",border:"1px solid rgba(0,82,255,0.08)"}}>
           <button style={{flex:1,background:"none",border:"none",color:"#fff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",textAlign:"left",padding:0}} onClick={()=>loadSaved(wf)}>{wf.name} <span style={{color:"#555",fontWeight:400}}>· {wf.steps.length} steps · used {wf.usedCount}×</span></button>
-          <button style={{background:"none",border:"none",color:"#ff4757",fontSize:12,padding:4}} onClick={()=>removeWorkflow({workflowId:wf._id,userId})}>✕</button>
+          <button style={{background:"none",border:"none",color:"#ff4757",fontSize:12,padding:4}} onClick={()=>token&&removeWorkflow({token,workflowId:wf._id})}>✕</button>
         </div>)}
       </div>}
     </div>}
@@ -676,22 +677,53 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
       {/* Submit */}
       {!walletAddr&&<button style={{...S.postBtn,marginTop:12,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 Connect Wallet to Post</button>}
       {walletAddr&&<button style={{...S.postBtn,padding:16,fontSize:15,marginTop:16,opacity:paying?0.5:1}} onClick={submit} disabled={paying}>{paying?"⏳ Paying...":"💳 "+t("post_btn")+(total>0?" · $"+total.toFixed(2)+" USDC":"")}</button>}
+      {walletAddr&&token&&total>0&&<div style={{fontSize:11,color:"#666",textAlign:"center",marginTop:8}}>RICO balance: ${balance.toFixed(2)} USDC{total>balance?` · your wallet will be asked for the missing $${(Math.ceil((total-balance)*100)/100).toFixed(2)}`:""}</div>}
     </>}
   </div>;
 }
 
 function WalletView(){
-  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user}=useUser(walletAddr);const stats=useStats();
+  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user}=useUser(walletAddr);const stats=useStats();const funds=useFunds();const{keys,createKey,revokeKey}=useApiKeys();const[busy,setBusy]=useState<string|null>(null);const[newKey,setNewKey]=useState<string|null>(null);
+  const act=async(label:string,fn:()=>Promise<any>)=>{setBusy(label);try{await fn()}catch(e:any){alert(errMsg(e))}finally{setBusy(null)}};
+  const askAmount=(q:string)=>{const v=prompt(q);if(!v)return null;const n=parseFloat(v.replace(",","."));if(!(n>0)){alert("Enter an amount above zero");return null}return n};
+  const doDeposit=()=>{const n=askAmount("How much USDC to add to your RICO balance?");if(n)act("deposit",()=>funds.topUp(n))};
+  const doWithdraw=()=>{const n=askAmount(`How much USDC to send back to your wallet? (balance $${funds.balance.toFixed(2)})`);if(n)act("withdraw",()=>funds.withdraw(n))};
+  const doClaim=()=>{const tx=prompt("Transaction hash of a USDC transfer you already sent to the RICO deposit address:");if(tx)act("deposit",()=>funds.claimDeposit(tx.trim()))};
+  const doNewKey=()=>{const label=prompt("Name for this API key (e.g. Claude)","Claude");if(label)act("key",async()=>{setNewKey((await createKey(label)).key)})};
   const courierHist=useCourierHistory(user?._id??null);
   const posterHist=usePosterHistory(user?._id??null);
   if(!walletAddr)return<div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2><div style={{marginTop:20,textAlign:"center"}}><button style={{...S.postBtn,maxWidth:320,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 {t("connect_to_use")}</button></div></div>;
-  if(!user)return<div style={S.postWrap}><div style={S.empty}>{t("loading")}</div></div>;
+  if(!user)return<div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2><div style={{marginTop:20,textAlign:"center"}}><button style={{...S.postBtn,maxWidth:320,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>✍️ Sign in with your wallet</button><div style={{fontSize:11,color:"#555",marginTop:10}}>A free signature that proves the wallet is yours. No transaction.</div></div></div>;
   const totalKm=courierHist.reduce((s:number,h:any)=>s+h.tripKm,0);
   const totalEarned=courierHist.filter((h:any)=>h.status==="completed").reduce((s:number,h:any)=>s+h.acceptedFee,0);
   return <div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2>
     <div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:16}}>
       <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:16}}><div style={{width:48,height:48,borderRadius:14,background:"linear-gradient(135deg,#00ff87,#00b4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:800,color:"#000"}}>{user.displayName[0]}</div><div><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>{user.displayName}</div><div style={{fontSize:11,color:"#444",fontFamily:"monospace"}}>{user.walletAddress.slice(0,14)}...</div></div></div>
       <div style={{display:"flex",gap:8}}><div style={S.pStat}><div style={S.pStatN}>★{user.score}</div><div style={S.pStatL}>{t("rating")}</div></div><div style={S.pStat}><div style={S.pStatN}>{user.deliveries}</div><div style={S.pStatL}>{t("runs")}</div></div><div style={S.pStat}><div style={S.pStatN}>{user.tasksPosted}</div><div style={S.pStatL}>{t("posted_stat")}</div></div></div>
+    </div>
+
+    <div style={{background:"rgba(0,255,135,0.03)",border:"1px solid rgba(0,255,135,0.12)",borderRadius:16,padding:20,marginTop:12}}>
+      <div style={{fontSize:11,color:"#666",textTransform:"uppercase",letterSpacing:1}}>RICO balance</div>
+      <div style={{fontSize:30,fontWeight:800,color:"#00ff87",fontFamily:"monospace",margin:"4px 0 12px"}}>${funds.balance.toFixed(2)} <span style={{fontSize:12,color:"#666"}}>USDC</span></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button style={{...S.bidAccBtn,flex:1,minHeight:40}} disabled={!!busy} onClick={doDeposit}>{busy==="deposit"?"⏳ Depositing...":"＋ Deposit"}</button>
+        <button style={{...S.bidAccBtn,flex:1,minHeight:40,background:"rgba(255,255,255,0.04)",color:"#ccc"}} disabled={!!busy||funds.balance<=0} onClick={doWithdraw}>{busy==="withdraw"?"⏳ ...":"↗ Withdraw"}</button>
+      </div>
+      <div style={{fontSize:11,color:"#555",marginTop:10,lineHeight:1.5}}>Posting a task takes its fee from this balance. Cancelled and refunded tasks come back here. Withdrawals go to this wallet only. <button style={{background:"none",border:"none",color:"#0052ff",fontSize:11,padding:0,cursor:"pointer"}} onClick={doClaim}>Sent USDC already? Claim it</button></div>
+      {funds.summary?.withdrawals?.slice(0,3).map((w:any)=><div key={w._id} style={{fontSize:11,color:"#666",marginTop:6,fontFamily:"monospace"}}>↗ ${w.amount.toFixed(2)} · {w.status==="failed"?"failed, returned to balance":w.status==="review"?"being checked":w.status}{w.txHash?<> · <a style={{color:"#0052ff"}} href={`https://basescan.org/tx/${w.txHash}`} target="_blank" rel="noreferrer">tx</a></>:null}</div>)}
+    </div>
+
+    <div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🔑 API keys</div><button style={{...S.bidAccBtn,fontSize:11,padding:"6px 12px",minHeight:30}} disabled={!!busy} onClick={doNewKey}>＋ New key</button></div>
+      <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>Lets an AI agent, the CLI or the Claude connector post and manage tasks as you, spending this balance. Treat a key like a password.</div>
+      {newKey&&<div style={{marginTop:10,padding:12,borderRadius:10,background:"rgba(255,208,0,0.05)",border:"1px solid rgba(255,208,0,0.2)"}}>
+        <div style={{fontSize:11,color:"#ffd000",marginBottom:6}}>Copy this key now. It will not be shown again.</div>
+        <div style={{fontFamily:"monospace",fontSize:11,color:"#fff",wordBreak:"break-all",userSelect:"all"}}>{newKey}</div>
+        <div style={{fontSize:11,color:"#666",marginTop:8}}>Claude connector URL:</div>
+        <div style={{fontFamily:"monospace",fontSize:11,color:"#fff",wordBreak:"break-all",userSelect:"all"}}>{`${window.location.origin}/mcp?key=${newKey}`}</div>
+        <button style={{background:"none",border:"none",color:"#666",fontSize:11,padding:0,marginTop:8,cursor:"pointer"}} onClick={()=>setNewKey(null)}>Done</button>
+      </div>}
+      {keys.map((k:any)=><div key={k._id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.03)",marginTop:8,fontSize:12,color:"#888"}}><span>{k.label} <span style={{fontFamily:"monospace",color:"#555"}}>rico_…{k.hint}</span></span><button style={{background:"none",border:"none",color:"#ff4757",fontSize:11,cursor:"pointer"}} onClick={()=>{if(confirm(`Revoke "${k.label}"? Anything using it stops working.`))act("key",()=>revokeKey(k._id))}}>Revoke</button></div>)}
     </div>
 
     {courierHist.length>0&&<div style={{marginTop:20}}>
@@ -975,8 +1007,9 @@ export default function App(){
   const[lang,setLang]=useState<Lang>(()=>detectLang());
   const[showLangMenu,setShowLangMenu]=useState(false);
   const[walletAddr,setWalletAddr]=useState<string|null>(null);
-  const connect=async()=>{try{const a=await connectWallet();setWalletAddr(a);setToast(translate("wallet_ready"));setTimeout(()=>setToast(null),3000)}catch(e:any){alert(e.message)}};
-  const swapWallet=async()=>{try{const a=await switchWallet();setWalletAddr(a);setToast("Wallet switched");setTimeout(()=>setToast(null),3000)}catch(e:any){alert(e.message)}};
+  // Connecting has two steps: pick the wallet, then sign a free message to prove it is yours.
+  const connect=async()=>{try{const a=walletAddr??await connectWallet();setWalletAddr(a);await ensureSession(a);setToast(translate("wallet_ready"));setTimeout(()=>setToast(null),3000)}catch(e:any){alert(errMsg(e))}};
+  const swapWallet=async()=>{try{endSession(null);const a=await switchWallet();setWalletAddr(a);await ensureSession(a);setToast("Wallet switched");setTimeout(()=>setToast(null),3000)}catch(e:any){alert(errMsg(e))}};
   const translate=(k:keyof TranslationKeys,...args:string[])=>{
     let s=(T[lang]?.[k]??T.en[k]??String(k));
     args.forEach((a,i)=>{s=s.replace(`{${i}}`,a)});return s;

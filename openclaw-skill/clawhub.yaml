@@ -1,6 +1,6 @@
 name: rico
 version: 1.0.0
-description: Post real-world tasks for humans via RICO. Deliveries, info gathering, verification, and more. USDC on Base via x402.
+description: Post real-world tasks for humans via RICO. Deliveries, info gathering, verification, and more. Paid from a prepaid USDC balance on Base.
 author: jiftuq
 license: MIT
 homepage: https://rico.delivery
@@ -10,12 +10,10 @@ tags:
   - physical-world
   - delivery
   - usdc
-  - x402
   - mcp
 mcp:
   command: npx
   args:
     - rico-mcp-server
   env:
-    RICO_URL: https://cool-rooster-544.convex.site
-    RICO_PRIVATE_KEY: ""
+    RICO_API_KEY: ""

@@ -1,13 +1,13 @@
 "use node";
-import { internalAction } from "./_generated/server";
-import { v } from "convex/values";
-import { internal, api } from "./_generated/api";
+import { action, internalAction } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-const BASE_RPC = "https://mainnet.base.org";
+const BASE_RPC = process.env.BASE_RPC_URL || "https://mainnet.base.org";
 const CHAIN_ID = 8453;
 
 // ── Minimal Ethereum helpers ──
@@ -39,9 +39,12 @@ async function rpc(method: string, params: any[] = []): Promise<any> {
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(`RPC ${method}: ${data.error.message}`);
+  if (data.error) throw new RpcRejected(`RPC ${method}: ${data.error.message}`);
   return data.result;
 }
+
+/** The node answered and said no. Unlike a network failure, nothing was sent. */
+class RpcRejected extends Error {}
 
 // ── Uint8Array helpers ──
 
@@ -81,7 +84,7 @@ function rlpEncode(input: Uint8Array | any[]): Uint8Array {
     const output = u8Concat(...encoded);
     return u8Concat(encodeLength(output.length, 0xc0), output);
   }
-  throw new Error("Invalid RLP input");
+  throw new ConvexError("Invalid RLP input");
 }
 
 function encodeLength(len: number, offset: number): Uint8Array {
@@ -144,99 +147,145 @@ function signTransaction(
   return "0x02" + bytesToHex(rlpEncode(signedFields));
 }
 
-// ── Get receiving wallet ──
-export const getReceivingWallet = internalAction({
-  args: {},
-  handler: async () => {
-    const wallet = process.env.RECEIVING_WALLET;
-    if (!wallet) throw new Error("RECEIVING_WALLET not set");
-    return wallet;
-  },
-});
+// Money leaves the platform wallet in exactly one place: processWithdrawals.
+// It only ever pays out amounts already taken from a prepaid balance.
 
-// ── Send USDC on-chain from platform wallet ──
-export const sendUSDC = internalAction({
-  args: { to: v.string(), amountUSDC: v.float64() },
-  handler: async (_ctx, { to, amountUSDC }) => {
-    if (amountUSDC <= 0) return null;
-    const privateKey = process.env.PLATFORM_PRIVATE_KEY;
-    if (!privateKey) throw new Error("PLATFORM_PRIVATE_KEY not set");
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const DEPOSIT_CONFIRMATIONS = 2;
+const RECEIPT_WAIT_MS = 45_000;
+const STALE_SENDING_MS = 10 * 60 * 1000;
 
-    const amount = parseUnits(amountUSDC.toFixed(6), 6);
-    const data = encodeTransferData(to, amount);
-    const from = privateKeyToAddress(privateKey);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const topicToAddress = (topic: string) => "0x" + topic.slice(-40).toLowerCase();
 
-    const [nonceHex, gasPriceHex] = await Promise.all([
-      rpc("eth_getTransactionCount", [from, "latest"]),
-      rpc("eth_gasPrice"),
-    ]);
+// ── Deposits: credit a balance from a verified on-chain USDC transfer ──
+export const claimDeposit = action({
+  args: { token: v.string(), txHash: v.string() },
+  handler: async (ctx, { token, txHash }): Promise<{ credited: number; alreadyCredited: boolean; balance: number }> => {
+    const user = await ctx.runQuery(internal.wallet.sessionUser, { token });
+    if (!user) throw new ConvexError("Not signed in: missing, invalid or expired token");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new ConvexError("Invalid transaction hash");
+    const treasury = process.env.RECEIVING_WALLET?.toLowerCase();
+    if (!treasury) throw new ConvexError("Deposits are not configured (RECEIVING_WALLET is not set)");
+    const hash = txHash.toLowerCase();
 
-    const nonce = parseInt(nonceHex, 16);
-    const gasPrice = BigInt(gasPriceHex);
-    const maxFeePerGas = gasPrice * 2n;
-    const maxPriorityFeePerGas = gasPrice / 10n;
-
-    const tx = {
-      to: USDC_ADDRESS,
-      data,
-      value: 0n,
-      nonce,
-      maxFeePerGas,
-      maxPriorityFeePerGas,
-      gasLimit: 100000n,
-    };
-
-    const rawTx = signTransaction(privateKey, tx);
-    const hash = await rpc("eth_sendRawTransaction", [rawTx]);
-    console.log(`USDC sent: $${amountUSDC.toFixed(2)} → ${to.slice(0, 10)}… tx=${hash}`);
-    return hash;
-  },
-});
-
-// ── Auto-release delivered tasks to courier (2h timeout) ──
-export const processAutoRelease = internalAction({
-  args: {},
-  handler: async (ctx) => {
-    const expired: any[] = await ctx.runQuery(api.tasks.getDeliveredExpired, {});
-    for (const task of expired) {
-      console.log(`Auto-releasing task ${task._id} to courier ($${task.totalEscrowed})`);
-      try {
-        const result: any = await ctx.runMutation(api.tasks.autoReleaseToCourier, { taskId: task._id });
-        if (result && result.courierId) {
-          const courier: any = await ctx.runQuery(api.users.get, { userId: result.courierId });
-          if (courier?.walletAddress && result.payout > 0) {
-            await ctx.runAction(internal.payments.sendUSDC, {
-              to: courier.walletAddress,
-              amountUSDC: result.payout,
-            });
-          }
-        }
-      } catch (e: any) {
-        console.error(`Auto-release failed for ${task._id}:`, e.message);
-      }
+    const receipt = await rpc("eth_getTransactionReceipt", [hash]);
+    if (!receipt) throw new ConvexError("Transaction not found yet. Wait a few seconds and try again.");
+    if (receipt.status !== "0x1") throw new ConvexError("Transaction failed on-chain");
+    const blockNumber = parseInt(receipt.blockNumber, 16);
+    const latest = parseInt(await rpc("eth_blockNumber"), 16);
+    if (latest - blockNumber < DEPOSIT_CONFIRMATIONS) {
+      throw new ConvexError("Transaction not confirmed yet. Wait a few seconds and try again.");
     }
+
+    // Count only USDC that moved from this account's own wallet to the platform wallet.
+    const wallet = user.walletAddress.toLowerCase();
+    let amount = 0n;
+    for (const log of receipt.logs as any[]) {
+      if (log.address?.toLowerCase() !== USDC_ADDRESS.toLowerCase()) continue;
+      if (log.topics?.length !== 3 || log.topics[0] !== TRANSFER_TOPIC) continue;
+      if (topicToAddress(log.topics[1]) !== wallet || topicToAddress(log.topics[2]) !== treasury) continue;
+      amount += BigInt(log.data);
+    }
+    if (amount <= 0n) {
+      throw new ConvexError("No USDC transfer from your wallet to the RICO deposit address in this transaction");
+    }
+    if (amount > BigInt(Number.MAX_SAFE_INTEGER)) throw new ConvexError("Deposit too large");
+
+    return await ctx.runMutation(internal.wallet.creditDeposit, {
+      userId: user._id, txHash: hash, amountMicro: Number(amount), blockNumber,
+    });
   },
 });
 
-// ── Auto-refund stuck in_progress tasks (4h timeout) ──
-export const processRefunds = internalAction({
+// ── Withdrawals ──
+
+async function sendUsdc(privateKey: string, to: string, amountMicro: number): Promise<string> {
+  const from = privateKeyToAddress(privateKey);
+  const [nonceHex, gasPriceHex] = await Promise.all([
+    rpc("eth_getTransactionCount", [from, "pending"]),
+    rpc("eth_gasPrice"),
+  ]);
+  const gasPrice = BigInt(gasPriceHex);
+  const rawTx = signTransaction(privateKey, {
+    to: USDC_ADDRESS,
+    data: encodeTransferData(to, BigInt(amountMicro)),
+    value: 0n,
+    nonce: parseInt(nonceHex, 16),
+    maxFeePerGas: gasPrice * 2n,
+    maxPriorityFeePerGas: gasPrice / 10n,
+    gasLimit: 100000n,
+  });
+  return await rpc("eth_sendRawTransaction", [rawTx]);
+}
+
+/** Poll for a receipt. Returns "sent", "reverted", or null if still unknown. */
+async function waitForReceipt(txHash: string, maxMs: number): Promise<"sent" | "reverted" | null> {
+  const deadline = Date.now() + maxMs;
+  for (;;) {
+    try {
+      const receipt = await rpc("eth_getTransactionReceipt", [txHash]);
+      if (receipt) return receipt.status === "0x1" ? "sent" : "reverted";
+    } catch { /* transient RPC trouble: keep polling */ }
+    if (Date.now() >= deadline) return null;
+    await sleep(2000);
+  }
+}
+
+/**
+ * Work through the withdrawal queue, one transfer at a time.
+ *
+ * The rule throughout: refund a balance only when the transfer provably did
+ * not happen. If that is uncertain, park the withdrawal in "review" for a
+ * human, because refunding a transfer that did land would pay it twice.
+ */
+export const processWithdrawals = internalAction({
   args: {},
   handler: async (ctx) => {
-    const stuck: any[] = await ctx.runQuery(api.tasks.getStuckTasks, {});
-    for (const task of stuck) {
-      console.log(`Auto-refunding task ${task._id} ($${task.totalEscrowed})`);
-      try {
-        await ctx.runMutation(api.tasks.refundTask, { taskId: task._id });
-        const poster: any = await ctx.runQuery(api.users.get, { userId: task.posterId });
-        if (poster?.walletAddress && task.totalEscrowed > 0) {
-          await ctx.runAction(internal.payments.sendUSDC, {
-            to: poster.walletAddress,
-            amountUSDC: task.totalEscrowed,
-          });
+    for (let i = 0; i < 10; i++) {
+      const next = await ctx.runMutation(internal.wallet.nextWithdrawal, {});
+      if (!next) return;
+      const w = next.withdrawal;
+      const finish = (outcome: "sent" | "failed" | "review", error?: string) =>
+        ctx.runMutation(internal.wallet.finishWithdrawal, { id: w._id, outcome, error });
+
+      if (next.job === "check") {
+        // Left over from an earlier run that was still waiting, or that crashed.
+        const stale = Date.now() - w.updatedAt > STALE_SENDING_MS;
+        if (!w.txHash) {
+          if (!stale) return; // another run may be mid-send
+          await finish("review", "Interrupted before a transaction hash was recorded");
+          continue;
         }
-      } catch (e: any) {
-        console.error(`Refund failed for ${task._id}:`, e.message);
+        const result = await waitForReceipt(w.txHash, 0);
+        if (result === "sent") await finish("sent");
+        else if (result === "reverted") await finish("failed", "Transfer reverted on-chain");
+        else if (stale) await finish("review", "No receipt after 10 minutes");
+        else return; // still pending: the cron will look again
+        continue;
       }
+
+      const privateKey = process.env.PLATFORM_PRIVATE_KEY;
+      if (!privateKey) { await finish("failed", "PLATFORM_PRIVATE_KEY not set"); continue; }
+
+      let txHash: string;
+      try {
+        txHash = await sendUsdc(privateKey, w.to, w.amountMicro);
+      } catch (e: any) {
+        // A rejection from the node means nothing was broadcast. Anything else
+        // (timeout, dropped connection) leaves it unknown.
+        if (e instanceof RpcRejected) await finish("failed", e.message);
+        else await finish("review", `Send outcome unknown: ${e.message}`);
+        console.error(`Withdrawal ${w._id} not sent:`, e.message);
+        continue;
+      }
+      await ctx.runMutation(internal.wallet.recordWithdrawalTx, { id: w._id, txHash });
+      console.log(`USDC sent: ${w.amountMicro / 1e6} -> ${w.to.slice(0, 10)}… tx=${txHash}`);
+
+      const result = await waitForReceipt(txHash, RECEIPT_WAIT_MS);
+      if (result === "sent") await finish("sent");
+      else if (result === "reverted") await finish("failed", "Transfer reverted on-chain");
+      else return; // stays "sending"; checked again on the next run
     }
   },
 });

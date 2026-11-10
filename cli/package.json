@@ -1,7 +1,7 @@
 {
   "name": "rico-cli",
-  "version": "1.0.0",
-  "description": "Post real-world tasks for humans from your terminal. Pay USDC on Base via x402.",
+  "version": "2.0.0",
+  "description": "Post real-world tasks for humans from your terminal, paid from a prepaid USDC balance on Base.",
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -14,7 +14,6 @@
     "agentic-commerce",
     "usdc",
     "base",
-    "x402",
     "delivery",
     "tasks",
     "physical-world"
@@ -24,8 +23,5 @@
     "url": "https://github.com/jiftuq/rico.delivery"
   },
   "homepage": "https://rico.delivery",
-  "license": "MIT",
-  "dependencies": {
-    "viem": "^2.27.2"
-  }
+  "license": "MIT"
 }

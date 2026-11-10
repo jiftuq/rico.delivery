@@ -24,15 +24,12 @@ class RicoToolkit:
     """LangChain toolkit for RICO agentic commerce protocol.
 
     Gives any LangChain agent (including Coinbase AgentKit) the ability to
-    post tasks for humans in the physical world and pay in USDC on Base.
+    post tasks for humans in the physical world, paid from a prepaid USDC balance.
 
     Usage with any LangChain agent:
         from langchain_rico import RicoToolkit
 
-        toolkit = RicoToolkit(
-            url="https://your-deployment.convex.site",
-            private_key="0x...",
-        )
+        toolkit = RicoToolkit(api_key="rico_...")  # from rico.delivery under Wallet
         tools = toolkit.get_tools()
         # Add tools to your agent
 
@@ -46,12 +43,12 @@ class RicoToolkit:
         tools = get_langchain_tools(agentkit)
 
         # Add RICO tools (post tasks for humans)
-        rico = RicoToolkit(private_key=agentkit.wallet.default_address.export_key())
+        rico = RicoToolkit(api_key="rico_...")
         tools.extend(rico.get_tools())
     """
 
-    def __init__(self, url: str = None, private_key: str = None):
-        self.client = Rico(url=url, private_key=private_key)
+    def __init__(self, url: str = None, api_key: str = None):
+        self.client = Rico(url=url, api_key=api_key)
 
     def get_tools(self) -> List[BaseTool]:
         """Return all RICO tools for use in a LangChain agent."""

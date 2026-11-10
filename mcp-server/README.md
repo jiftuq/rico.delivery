@@ -1,28 +1,16 @@
 # RICO MCP Server
 
-MCP (Model Context Protocol) server that lets AI agents interact with RICO — the agentic commerce protocol where agents post tasks for humans to complete in the physical world.
+MCP (Model Context Protocol) server that lets AI agents use RICO: post tasks for humans to complete in the physical world, watch bids, and pay runners from a prepaid USDC balance.
 
-## Setup
+## Before you start
 
-```bash
-cd mcp-server
-npm install
-```
+1. Open [rico.delivery](https://rico.delivery), connect your wallet and sign in.
+2. Under **Wallet**, deposit some USDC. This is the balance your agent can spend, and the most it can ever spend.
+3. Under **Wallet → API keys**, create a key (`rico_...`). It is shown once.
 
-## Environment Variables
+Listing and reading tasks works without a key. Everything else needs one.
 
-```bash
-# Required: Your RICO Convex deployment URL
-RICO_URL=https://your-deployment.convex.site
-
-# Optional: Agent's wallet private key for auto-paying tasks via x402
-RICO_PRIVATE_KEY=0x...
-
-# Optional, HTTP mode only: bearer token that callers must send (see below)
-RICO_MCP_TOKEN=...
-```
-
-## Add to Claude Desktop / Claude Code (local, stdio)
+## Claude Desktop / Claude Code (local, stdio)
 
 ```json
 {
@@ -30,34 +18,56 @@ RICO_MCP_TOKEN=...
     "rico": {
       "command": "npx",
       "args": ["rico-mcp-server"],
-      "env": {
-        "RICO_URL": "https://your-deployment.convex.site",
-        "RICO_PRIVATE_KEY": "0x..."
-      }
+      "env": { "RICO_API_KEY": "rico_..." }
     }
   }
 }
 ```
 
-## Add to claude.ai chat (remote, Streamable HTTP)
+## claude.ai chat (remote, Streamable HTTP)
 
-The chat apps connect to a URL instead of starting a local process.
+The chat apps connect to a URL instead of starting a local process, and cannot send custom headers, so the key goes in the URL:
 
-- **Hosted:** `api/mcp.js` in this repo deploys the server as a Vercel function at `https://rico.delivery/mcp`.
-- **Self-hosted:** `npm run start:http` (or `npx rico-mcp-server --http`) serves `http://localhost:3333/mcp`. Set `PORT` to change the port.
+```
+https://rico.delivery/mcp?key=rico_...
+```
 
-In claude.ai open **Settings → Connectors → Add custom connector**, paste the `/mcp` URL, then start a new chat and ask "show me the open RICO tasks".
+In claude.ai open **Settings → Connectors → Add custom connector**, paste that URL, then start a new chat and ask "show me the open RICO tasks". The Wallet page shows this URL ready to copy when you create a key.
 
-The endpoint is stateless and accepts `POST` only.
+Treat the URL like a password: anyone who has it can spend your RICO balance (never more than the balance, and withdrawals only go to your own wallet). Revoke the key under Wallet if it leaks.
 
-### Auth and the wallet over HTTP
+Clients that can send headers may use `Authorization: Bearer rico_...` with the plain `/mcp` URL instead.
 
-| `RICO_MCP_TOKEN` | Who can call | `RICO_PRIVATE_KEY` |
+### Hosting it yourself
+
+- `api/mcp.js` in this repo deploys the server as a Vercel function at `/mcp`.
+- `npm run start:http` (or `npx rico-mcp-server --http`) serves `http://localhost:3333/mcp`. Set `PORT` to change the port.
+
+The endpoint is stateless, accepts `POST` only, and holds no secrets of its own: each caller's key is passed straight through to the RICO API.
+
+## Environment variables
+
+| Variable | Used by | Purpose |
 |---|---|---|
-| unset | anyone | **ignored**: an open endpoint can never spend the wallet |
-| set | callers sending `Authorization: Bearer <token>` | used for x402 payments |
+| `RICO_API_KEY` | stdio | Your API key |
+| `RICO_URL` | both | RICO API URL, if you run your own deployment (`https://<name>.convex.site`) |
+| `PORT` | HTTP | Port for `start:http` (default 3333) |
 
-claude.ai custom connectors cannot send a static bearer token, so the hosted connector runs with the token unset, and paid actions return a 402 error instead of paying.
+## Tools
+
+| Tool | Needs key | Description |
+|---|---|---|
+| `list_tasks` | no | List open tasks (with task board UI) |
+| `get_task` | no | A task and its bids (with task board UI) |
+| `wait_for_bids` | no | Wait for new bids on a task |
+| `health` | no | Check the API is up |
+| `post_task` | yes | Post a task; the escrow comes out of your balance |
+| `accept_bid` | yes | Accept a runner's bid; settles any difference with your balance |
+| `confirm_delivery` | yes | Release the escrow to the runner |
+| `cancel_task` | yes | Cancel an open task; escrow returns to your balance |
+| `place_bid` | yes | Bid on someone else's task as a runner |
+| `get_balance` | yes | Balance, deposit address, recent activity |
+| `claim_deposit` | yes | Credit a confirmed USDC transfer from your wallet |
 
 ## Task board UI (MCP Apps)
 
@@ -65,39 +75,20 @@ claude.ai custom connectors cannot send a static bearer token, so the hosted con
 
 The UI is one self-contained HTML file with no build step and no external requests.
 
-## Available Tools
-
-| Tool | Description |
-|---|---|
-| `post_task` | Post a new task (delivery, go-somewhere, interact, gather-info, physical-action, verification) |
-| `list_tasks` | List currently open tasks (with task board UI) |
-| `get_task` | Get full details of a task and its bids (with task board UI) |
-| `place_bid` | Place a bid on a task as a runner |
-| `accept_bid` | Accept a runner's bid |
-| `confirm_delivery` | Confirm completion and release USDC payment |
-| `cancel_task` | Cancel a task and get refund |
-| `wait_for_bids` | Wait for new bids on a task |
-| `health` | Check server status |
-
-## Example Agent Conversation
+## Example
 
 ```
-Agent: "I need someone to photograph all menu items at the restaurant on Rue Neuve 45, Brussels"
+You: "I need someone to photograph all menu items at the restaurant on Rue Neuve 45, Brussels, for 8 USDC"
 
-→ Calls post_task with:
-  - taskType: "gather-info"
-  - locationAddr: "Rue Neuve 45, Brussels"
-  - action: "Photograph every item on the menu, front and back pages"
-  - proofType: "photo"
-  - suggestedFee: 8.00
+→ post_task
+    title: "Photograph the menu at Rue Neuve 45"
+    taskType: "gather-info"
+    suggestedFee: 8
+    steps: [
+      { action: "Go to Rue Neuve 45, Brussels", locationAddr: "Rue Neuve 45, Brussels", proofType: "gps" },
+      { action: "Photograph every page of the menu, front and back", proofType: "photo" }
+    ]
+→ wait_for_bids → accept_bid → (runner does the work) → get_task → confirm_delivery
 ```
 
-## Payment Flow
-
-When posting a task, the server handles x402 payment automatically:
-
-1. POST /task → server returns 402 with USDC requirements
-2. Agent's wallet signs EIP-3009 TransferWithAuthorization
-3. Retries with X-Payment header → task created
-
-Requires the agent to have USDC on Base Mainnet in the wallet specified by `RICO_PRIVATE_KEY`.
+If the balance is too low, `post_task` fails without creating anything and says how to top up.

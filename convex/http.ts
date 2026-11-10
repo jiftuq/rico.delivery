@@ -1,13 +1,14 @@
 import { httpRouter } from "convex/server";
-import { httpAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { ConvexError } from "convex/values";
+import { httpAction, ActionCtx } from "./_generated/server";
+import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
 function corsHeaders(origin?: string) {
   return {
     "Access-Control-Allow-Origin": origin || "*",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Credentials": "true",
   };
 }
@@ -19,163 +20,122 @@ function json(data: unknown, status = 200, origin?: string) {
   });
 }
 
-// ── POST /task ──
-const postTask = httpAction(async (ctx, request) => {
-  const origin = request.headers.get("Origin") || undefined;
+// ── Auth ──
+// Routes that act for a user read an API key (or session token) from the
+// Authorization header and pass it to the same functions the web app calls.
+// Who the caller is always comes from that key, never from the request body.
 
-  let body: any;
-  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
+const NO_KEY = "Missing API key. Send 'Authorization: Bearer rico_...'. Create a key at rico.delivery under Wallet.";
 
-  try {
-    const taskId = await ctx.runMutation(api.tasks.create, body);
-    return json({ taskId }, 200, origin);
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-});
+function bearer(request: Request): string | null {
+  const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get("Authorization") || "");
+  return match ? match[1] : null;
+}
 
-// ── POST /accept-bid ──
-const acceptBid = httpAction(async (ctx, request) => {
-  const origin = request.headers.get("Origin") || undefined;
-  let body: any;
-  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
-  const { taskId, bidId, posterId } = body;
+function errorResponse(e: any, origin?: string) {
+  const message: string = e instanceof ConvexError ? String(e.data) : (e?.message || "Request failed");
+  const status = message.startsWith("Not signed in") ? 401
+    : message.startsWith("Insufficient balance") ? 402
+    : 400;
+  return json({ error: message }, status, origin);
+}
 
-  if (!taskId || !bidId || !posterId) {
-    return json({ error: "Missing taskId, bidId, or posterId" }, 400, origin);
-  }
+type Handler = (ctx: ActionCtx, token: string, body: any, url: URL) => Promise<unknown>;
 
-  try {
-    await ctx.runMutation(api.tasks.acceptBid, {
-      taskId: taskId as Id<"tasks">, bidId: bidId as Id<"bids">, posterId: posterId as Id<"users">,
-    });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-
-  return json({ ok: true }, 200, origin);
-});
-
-// ── POST /confirm-delivery ──
-const confirmDelivery = httpAction(async (ctx, request) => {
-  const origin = request.headers.get("Origin") || undefined;
-  let body: any;
-  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
-  const { taskId, posterId, runnerId, ratingScore, ratingComment } = body;
-
-  if (!taskId || !posterId) {
-    return json({ error: "Missing taskId or posterId" }, 400, origin);
-  }
-
-  let task: any;
-  try {
-    task = await ctx.runQuery(api.tasks.getTask, { taskId: taskId as Id<"tasks"> });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-
-  if (!task) return json({ error: "Task not found" }, 400, origin);
-  if (task.posterId !== posterId) return json({ error: "Unauthorized" }, 403, origin);
-
-  const multi = (task.maxRunners || 1) > 1;
-  const FEE_RATE = 0.07;
-
-  let payRunnerId: string;
-  let payAmount: number;
-
-  if (multi) {
-    if (!runnerId) return json({ error: "runnerId required for multi-runner task" }, 400, origin);
-    payRunnerId = runnerId;
-    const runners: any[] = await ctx.runQuery(api.tasks.getTaskRunners, { taskId: taskId as Id<"tasks"> });
-    const tr = runners.find((r: any) => r.runnerId === runnerId);
-    if (!tr) return json({ error: "Runner not found on task" }, 400, origin);
-    const burn = Math.round(tr.fee * FEE_RATE * 100) / 100;
-    payAmount = tr.fee - burn;
-  } else {
-    if (!task.courierId) return json({ error: "No runner assigned" }, 400, origin);
-    if (task.status !== "delivered" && task.status !== "in_progress") return json({ error: "Cannot confirm" }, 400, origin);
-    payRunnerId = task.courierId;
-    const burn = Math.round(task.totalEscrowed * FEE_RATE * 100) / 100;
-    payAmount = task.totalEscrowed - burn;
-  }
-
-  let courier: any;
-  try {
-    courier = await ctx.runQuery(api.users.get, { userId: payRunnerId as Id<"users"> });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-  if (!courier) return json({ error: "Runner not found" }, 400, origin);
-
-  try {
-    await ctx.runMutation(api.tasks.confirmDelivery, {
-      taskId: taskId as Id<"tasks">,
-      posterId: posterId as Id<"users">,
-      runnerId: multi ? runnerId as Id<"users"> : undefined,
-      ratingScore,
-      ratingComment,
-    });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-
-  let txHash: string | null | undefined;
-  try {
-    txHash = await ctx.runAction(internal.payments.sendUSDC, {
-      to: courier.walletAddress,
-      amountUSDC: payAmount,
-    });
-  } catch (e: any) {
-    console.error(`Payout to ${courier.walletAddress} failed:`, e.message);
-    return json({ ok: true, payout: payAmount, payoutFailed: true, error: e.message }, 200, origin);
-  }
-
-  return json({ ok: true, payout: payAmount, txHash }, 200, origin);
-});
-
-// ── POST /cancel-task ──
-const cancelTask = httpAction(async (ctx, request) => {
-  const origin = request.headers.get("Origin") || undefined;
-  let body: any;
-  try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
-  const { taskId, posterId } = body;
-
-  if (!taskId || !posterId) {
-    return json({ error: "Missing taskId or posterId" }, 400, origin);
-  }
-
-  let poster: any;
-  try {
-    poster = await ctx.runQuery(api.users.get, { userId: posterId as Id<"users"> });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-  if (!poster) return json({ error: "User not found" }, 400, origin);
-
-  let task: any;
-  try {
-    task = await ctx.runMutation(api.tasks.cancel, {
-      taskId: taskId as Id<"tasks">,
-      posterId: posterId as Id<"users">,
-    });
-  } catch (e: any) {
-    return json({ error: e.message }, 400, origin);
-  }
-
-  let txHash: string | null | undefined;
-  try {
-    if (task?.totalEscrowed > 0) {
-      txHash = await ctx.runAction(internal.payments.sendUSDC, {
-        to: poster.walletAddress,
-        amountUSDC: task.totalEscrowed,
-      });
+/** Wrap a route that needs a signed-in caller. */
+function authed(handler: Handler) {
+  return httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin") || undefined;
+    const token = bearer(request);
+    if (!token) return json({ error: NO_KEY }, 401, origin);
+    let body: any = {};
+    if (request.method === "POST") {
+      try { body = await request.json(); } catch { return json({ error: "Invalid or empty JSON body" }, 400, origin); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Body must be a JSON object" }, 400, origin);
     }
-  } catch (e: any) {
-    console.error(`Refund to ${poster.walletAddress} failed:`, e.message);
-    return json({ ok: true, refund: task?.totalEscrowed, refundFailed: true, error: e.message }, 200, origin);
-  }
+    try {
+      return json(await handler(ctx, token, body, new URL(request.url)), 200, origin);
+    } catch (e: any) {
+      return errorResponse(e, origin);
+    }
+  });
+}
 
-  return json({ ok: true, refund: task?.totalEscrowed, txHash }, 200, origin);
+/** Wrap a public, read-only route. */
+function open(handler: (ctx: ActionCtx, url: URL) => Promise<unknown>) {
+  return httpAction(async (ctx, request) => {
+    const origin = request.headers.get("Origin") || undefined;
+    try {
+      return json(await handler(ctx, new URL(request.url)), 200, origin);
+    } catch (e: any) {
+      return errorResponse(e, origin);
+    }
+  });
+}
+
+// ── POST /task ── escrow comes out of the caller's prepaid balance
+const postTask = authed(async (ctx, token, body) => {
+  // Older clients sent these; identity now comes from the key.
+  const { posterId: _p, paymentTx: _t, token: _k, ...fields } = body;
+  const taskId = await ctx.runMutation(api.tasks.create, { ...fields, token });
+  return { taskId };
+});
+
+// ── POST /bid ──
+const placeBid = authed(async (ctx, token, { taskId, fee, comment, lat, lng, tripKm }) => {
+  const bidId = await ctx.runMutation(api.tasks.placeBid, {
+    token, taskId, fee, comment: comment || "", lat: lat ?? 0, lng: lng ?? 0, tripKm: tripKm ?? 0,
+  });
+  return { bidId };
+});
+
+// ── POST /accept-bid ── settles any difference between bid and escrow
+const acceptBid = authed(async (ctx, token, { taskId, bidId }) => {
+  const result = await ctx.runMutation(api.tasks.acceptBid, { token, taskId, bidId });
+  return { ok: true, ...result };
+});
+
+// ── POST /confirm-delivery ── releases escrow to the runner
+const confirmDelivery = authed(async (ctx, token, { taskId, runnerId, ratingScore, ratingComment }) => {
+  const result = await ctx.runMutation(api.tasks.confirmDelivery, { token, taskId, runnerId, ratingScore, ratingComment });
+  return { ok: true, ...result };
+});
+
+// ── POST /cancel-task ── returns escrow to the caller's balance
+const cancelTask = authed(async (ctx, token, { taskId }) => {
+  const result = await ctx.runMutation(api.tasks.cancel, { token, taskId });
+  return { ok: true, ...result };
+});
+
+// ── POST /deposit ── credit a USDC transfer already sent to the deposit address
+const deposit = authed(async (ctx, token, { txHash }) => {
+  if (typeof txHash !== "string") throw new ConvexError("Missing txHash");
+  return await ctx.runAction(api.payments.claimDeposit, { token, txHash });
+});
+
+// ── POST /withdraw ── send balance back to the account's own wallet
+const withdraw = authed(async (ctx, token, { amount }) =>
+  ctx.runMutation(api.wallet.requestWithdrawal, { token, amount }));
+
+// ── GET /me ── balance, deposit address, recent activity
+const me = authed(async (ctx, token) => {
+  const summary = await ctx.runQuery(api.wallet.summary, { token });
+  if (!summary) throw new ConvexError("Not signed in: missing, invalid or expired token");
+  return summary;
+});
+
+// ── GET /tasks ── open tasks
+const listTasks = open(async (ctx) => ({ tasks: await ctx.runQuery(api.tasks.listOpen, {}) }));
+
+// ── GET /task?id= ── one task with its bids
+const getTask = open(async (ctx, url) => {
+  const taskId = url.searchParams.get("id") as Id<"tasks"> | null;
+  if (!taskId) throw new ConvexError("Missing ?id= parameter");
+  let task;
+  try { task = await ctx.runQuery(api.tasks.getTask, { taskId }); } catch { task = null; }
+  if (!task) throw new ConvexError("Task not found");
+  const bids = await ctx.runQuery(api.tasks.getBids, { taskId });
+  return { ...task, bids };
 });
 
 // ── CORS preflight ──
@@ -195,39 +155,52 @@ const openapi = httpAction(async (_ctx, request) => {
   const origin = request.headers.get("Origin") || undefined;
   const spec = {
     openapi: "3.1.0",
-    info: { title: "RICO — Agent Workflows for the Real World", version: "1.1.0",
-      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. USDC on Base." },
+    info: { title: "RICO — Agent Workflows for the Real World", version: "2.0.0",
+      description: "AI agents post workflow-based tasks for humans. Deliveries, moving, info gathering, verification, and more. Paid from a prepaid USDC balance on Base. Create an API key at rico.delivery under Wallet." },
+    security: [{ apiKey: [] }],
     servers: [{ url: "https://cool-rooster-544.convex.site" }],
     paths: {
       "/task": { post: { operationId: "postTask", summary: "Post a workflow-based task",
         requestBody: { required: true, content: { "application/json": { schema: { "$ref": "#/components/schemas/PostTaskRequest" } } } },
         responses: { "200": { description: "Task created", content: { "application/json": { schema: { type: "object", properties: { taskId: { type: "string" } } } } } } } } },
       "/accept-bid": { post: { operationId: "acceptBid", summary: "Accept a runner's bid",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId","posterId"],
-          properties: { taskId: { type: "string" }, bidId: { type: "string" }, posterId: { type: "string" } } } } } },
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId"],
+          properties: { taskId: { type: "string" }, bidId: { type: "string" } } } } } },
         responses: { "200": { description: "Bid accepted" } } } },
       "/confirm-delivery": { post: { operationId: "confirmDelivery", summary: "Confirm completion and release USDC",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
-          properties: { taskId: { type: "string" }, posterId: { type: "string" }, runnerId: { type: "string" }, ratingScore: { type: "integer" }, ratingComment: { type: "string" } } } } } },
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId"],
+          properties: { taskId: { type: "string" }, runnerId: { type: "string" }, ratingScore: { type: "integer" }, ratingComment: { type: "string" } } } } } },
         responses: { "200": { description: "Confirmed, USDC released" } } } },
       "/cancel-task": { post: { operationId: "cancelTask", summary: "Cancel task and refund USDC",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","posterId"],
-          properties: { taskId: { type: "string" }, posterId: { type: "string" } } } } } },
-        responses: { "200": { description: "Cancelled, USDC refunded" } } } },
-      "/health": { get: { operationId: "healthCheck", summary: "Check server status", responses: { "200": { description: "OK" } } } }
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId"],
+          properties: { taskId: { type: "string" } } } } } },
+        responses: { "200": { description: "Cancelled, escrow returned to balance" } } } },
+      "/tasks": { get: { operationId: "listTasks", summary: "List open tasks", security: [], responses: { "200": { description: "Open tasks" } } } },
+      "/bid": { post: { operationId: "placeBid", summary: "Bid on a task as a runner",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","fee"],
+          properties: { taskId: { type: "string" }, fee: { type: "number" }, comment: { type: "string" }, lat: { type: "number" }, lng: { type: "number" }, tripKm: { type: "number" } } } } } },
+        responses: { "200": { description: "Bid placed" } } } },
+      "/me": { get: { operationId: "getBalance", summary: "Balance, deposit address and recent activity", responses: { "200": { description: "Account summary" } } } },
+      "/deposit": { post: { operationId: "claimDeposit", summary: "Credit a confirmed USDC transfer from your wallet",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["txHash"], properties: { txHash: { type: "string" } } } } } },
+        responses: { "200": { description: "Deposit credited" } } } },
+      "/withdraw": { post: { operationId: "withdraw", summary: "Send balance to the account's own wallet",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["amount"], properties: { amount: { type: "number" } } } } } },
+        responses: { "200": { description: "Withdrawal queued" } } } },
+      "/health": { get: { operationId: "healthCheck", summary: "Check server status", security: [], responses: { "200": { description: "OK" } } } }
     },
-    components: { schemas: {
+    components: { securitySchemes: { apiKey: { type: "http", scheme: "bearer", description: "RICO API key (rico_...)" } }, schemas: {
       WorkflowStep: { type: "object", properties: {
         order: { type: "integer" }, action: { type: "string" }, locationAddr: { type: "string" },
         locationLat: { type: "number" }, locationLng: { type: "number" },
         proofType: { type: "string", enum: ["photo","video","text","gps","none"] },
         requirements: { type: "string" }, status: { type: "string", default: "pending" } } },
-      PostTaskRequest: { type: "object", required: ["title","taskType","suggestedFee","posterId"], properties: {
+      PostTaskRequest: { type: "object", required: ["title","category","details","taskType","suggestedFee"], properties: {
         title: { type: "string" }, taskType: { type: "string", enum: ["delivery","go-somewhere","interact","gather-info","physical-action","verification"] },
         category: { type: "string" }, details: { type: "string" },
         steps: { type: "array", items: { "$ref": "#/components/schemas/WorkflowStep" }, description: "Workflow steps" },
         suggestedFee: { type: "number" }, maxRunners: { type: "integer", default: 1 },
-        privacyZone: { type: "integer", default: 100 }, posterId: { type: "string" },
+        privacyZone: { type: "integer", default: 100 },
         locationAddr: { type: "string" }, locationLat: { type: "number" }, locationLng: { type: "number" },
         action: { type: "string" }, proofType: { type: "string" },
         pickupAddr: { type: "string" }, pickupLat: { type: "number" }, pickupLng: { type: "number" },
@@ -601,7 +574,17 @@ const frameHandler = httpAction(async (ctx, request) => {
 const http = httpRouter();
 
 http.route({ path: "/task", method: "POST", handler: postTask });
+http.route({ path: "/task", method: "GET", handler: getTask });
 http.route({ path: "/task", method: "OPTIONS", handler: corsOptions });
+http.route({ path: "/tasks", method: "GET", handler: listTasks });
+http.route({ path: "/tasks", method: "OPTIONS", handler: corsOptions });
+
+for (const [path, handler] of [["/bid", placeBid], ["/deposit", deposit], ["/withdraw", withdraw]] as const) {
+  http.route({ path, method: "POST", handler });
+  http.route({ path, method: "OPTIONS", handler: corsOptions });
+}
+http.route({ path: "/me", method: "GET", handler: me });
+http.route({ path: "/me", method: "OPTIONS", handler: corsOptions });
 
 http.route({ path: "/accept-bid", method: "POST", handler: acceptBid });
 http.route({ path: "/accept-bid", method: "OPTIONS", handler: corsOptions });

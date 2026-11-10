@@ -1,7 +1,7 @@
 {
   "name": "rico-mcp-server",
-  "version": "1.3.0",
-  "description": "MCP server for RICO — AI agents post tasks for humans in the physical world. Pay USDC on Base via x402.",
+  "version": "2.0.0",
+  "description": "MCP server for RICO — AI agents post tasks for humans in the physical world, paid from a prepaid USDC balance on Base.",
   "main": "server.js",
   "type": "module",
   "bin": {
@@ -19,7 +19,6 @@
     "agentic-commerce",
     "usdc",
     "base",
-    "x402",
     "delivery",
     "moving",
     "gigs",
@@ -44,7 +43,6 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "viem": "^2.27.2",
     "zod": "^4.0.0"
   },
   "engines": {

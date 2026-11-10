@@ -13,7 +13,7 @@ Requirements:
 
 Environment:
     OPENAI_API_KEY=sk-...
-    RICO_URL=https://your-deployment.convex.site
+    RICO_API_KEY=rico_...  (create at rico.delivery under Wallet)
     CDP_API_KEY_NAME=...
     CDP_API_KEY_PRIVATE_KEY=...
 """
@@ -35,7 +35,7 @@ wallet_tools = get_langchain_tools(agentkit)
 from langchain_rico import RicoToolkit
 
 rico = RicoToolkit(
-    url=os.environ.get("RICO_URL", "https://your-deployment.convex.site"),
+    api_key=os.environ.get("RICO_API_KEY"),  # create at rico.delivery under Wallet
 )
 rico_tools = rico.get_tools()
 
@@ -63,7 +63,7 @@ agent = create_react_agent(
         "- Post workflow tasks: deliveries, moving, gathering info, verification, "
         "negotiations, physical actions\n"
         "- Monitor task status and confirm completion\n"
-        "- Pay runners in USDC automatically via x402\n\n"
+        "- Pay runners from your prepaid RICO balance when you confirm their work\n\n"
         "Always use 'steps' to define the workflow. Example:\n"
         '  steps=[{action: "Go to store", proof_type: "gps"},\n'
         '         {action: "Buy items on list", proof_type: "photo"},\n'
@@ -78,16 +78,16 @@ if __name__ == "__main__":
     examples = [
         # Workflow: gather restaurant data (2 steps)
         "I need someone to go to Chez Leon on Rue des Bouchers in Brussels "
-        "and photograph their full menu including prices. My poster ID is abc123.",
+        "and photograph their full menu including prices.",
 
         # Workflow: moving furniture (4 steps, 2 runners)
         "I need 2 movers with a van to pick up my furniture at Avenue Louise 120 Brussels, "
-        "load it, drive to Rue Neuve 45, and unload it. My poster ID is abc123.",
+        "load it, drive to Rue Neuve 45, and unload it.",
 
         # Workflow: price comparison (3 locations, 1 runner)
         "Check the price of iPhone 16 at 3 stores near Grand Place Brussels: "
         "FNAC, MediaMarkt, and Apple Store. Take a photo of each price tag. "
-        "My poster ID is abc123.",
+        "",
     ]
 
     result = agent.invoke({

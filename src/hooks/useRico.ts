@@ -1,24 +1,80 @@
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useState, useEffect, useCallback } from "react";
 import { Id } from "../../convex/_generated/dataModel";
 import { BRUSSELS } from "../lib/utils";
+import { payUSDC } from "../lib/wallet";
+import { useToken, errMsg, pendingDeposits, addPendingDeposit, removePendingDeposit } from "../lib/session";
 
+/** The signed-in user. `token` is what every action takes to say who is calling. */
 export function useUser(walletAddress: string | null) {
-  const getOrCreate = useMutation(api.users.getOrCreate);
-  const userData = useQuery(api.users.getByWallet, walletAddress ? { walletAddress } : "skip");
-  const [userId, setUserId] = useState<Id<"users"> | null>(null);
+  const token = useToken();
+  const user = useQuery(api.auth.me, walletAddress && token ? { token } : "skip") ?? null;
+  return { user, userId: (user?._id ?? null) as Id<"users"> | null, walletAddress, token: user ? token : null };
+}
 
-  useEffect(() => {
-    if (!walletAddress) { setUserId(null); return; }
-    if (!userData) {
-      getOrCreate({ walletAddress }).then((id) => setUserId(id));
-    } else {
-      setUserId(userData._id);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Prepaid balance: read it, top it up from the wallet, withdraw it. */
+export function useFunds() {
+  const token = useToken();
+  const summary = useQuery(api.wallet.summary, token ? { token } : "skip") ?? null;
+  const claim = useAction(api.payments.claimDeposit);
+  const withdrawMutation = useMutation(api.wallet.requestWithdrawal);
+
+  /** Credit a deposit that is already on-chain. Retries while it confirms. */
+  const claimDeposit = useCallback(async (txHash: string) => {
+    if (!token) throw new Error("Sign in first");
+    addPendingDeposit(txHash);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const result = await claim({ token, txHash });
+        removePendingDeposit(txHash);
+        return result;
+      } catch (e) {
+        const waiting = /not (found|confirmed) yet/i.test(errMsg(e));
+        if (!waiting) removePendingDeposit(txHash);
+        if (!waiting || attempt >= 20) throw e;
+        await sleep(2000);
+      }
     }
-  }, [userData, walletAddress]);
+  }, [token, claim]);
 
-  return { user: userData ?? null, userId, walletAddress };
+  // Finish crediting deposits interrupted by a closed tab or lost connection.
+  useEffect(() => {
+    if (!token) return;
+    pendingDeposits().forEach((tx) => claimDeposit(tx).catch(() => {}));
+  }, [token]);
+
+  const topUp = useCallback(async (amountUSDC: number) => {
+    const txHash = await payUSDC(amountUSDC, summary?.depositAddress);
+    return await claimDeposit(txHash);
+  }, [summary?.depositAddress, claimDeposit]);
+
+  /** Make sure the balance covers `amountUSDC`, topping up the shortfall. */
+  const ensureFunds = useCallback(async (amountUSDC: number) => {
+    const shortfall = Math.ceil((amountUSDC - (summary?.balance ?? 0)) * 100) / 100;
+    if (shortfall > 0) await topUp(shortfall);
+  }, [summary?.balance, topUp]);
+
+  const withdraw = useCallback((amount: number) => {
+    if (!token) throw new Error("Sign in first");
+    return withdrawMutation({ token, amount });
+  }, [token, withdrawMutation]);
+
+  return { summary, balance: summary?.balance ?? 0, topUp, ensureFunds, claimDeposit, withdraw };
+}
+
+export function useApiKeys() {
+  const token = useToken();
+  const keys = useQuery(api.auth.listApiKeys, token ? { token } : "skip") ?? [];
+  const create = useAction(api.auth.createApiKey);
+  const revoke = useMutation(api.auth.revokeApiKey);
+  return {
+    keys,
+    createKey: (label: string) => create({ token: token!, label }),
+    revokeKey: (keyId: Id<"authTokens">) => revoke({ token: token!, keyId }),
+  };
 }
 
 export function useGPS() {
@@ -51,14 +107,15 @@ export function useBids(taskId: Id<"tasks"> | null) {
 }
 
 export function useChat(taskId: Id<"tasks"> | null) {
-  const msgs = useQuery(api.chat.list, taskId ? { taskId } : "skip") ?? [];
+  const token = useToken();
+  const msgs = useQuery(api.chat.list, taskId && token ? { taskId, token } : "skip") ?? [];
   const sendMsg = useMutation(api.chat.send);
   const send = useCallback(
-    (senderId: Id<"users">, text: string) => {
-      if (!taskId) return;
-      return sendMsg({ taskId, senderId, text });
+    (text: string) => {
+      if (!taskId || !token) return;
+      return sendMsg({ token, taskId, text });
     },
-    [taskId, sendMsg]
+    [taskId, token, sendMsg]
   );
   return { messages: msgs, send };
 }
@@ -89,17 +146,18 @@ export function useProofFiles(taskId: Id<"tasks"> | null) {
 }
 
 export function useProofUpload() {
+  const token = useToken();
   const generateUrl = useMutation(api.proofs.generateUploadUrl);
   const saveFile = useMutation(api.proofs.saveProofFile);
 
   const upload = useCallback(async (
     file: File,
     taskId: Id<"tasks">,
-    runnerId: Id<"users">,
     stepOrder?: number,
     caption?: string,
   ) => {
-    const uploadUrl = await generateUrl();
+    if (!token) throw new Error("Sign in first");
+    const uploadUrl = await generateUrl({ token });
     const res = await fetch(uploadUrl, {
       method: "POST",
       headers: { "Content-Type": file.type },
@@ -107,22 +165,23 @@ export function useProofUpload() {
     });
     const { storageId } = await res.json();
     return await saveFile({
+      token,
       taskId,
-      runnerId,
       stepOrder,
       storageId,
       fileType: file.type,
       fileName: file.name,
       caption,
     });
-  }, [generateUrl, saveFile]);
+  }, [token, generateUrl, saveFile]);
 
   return { upload };
 }
 
 // Saved workflows
-export function useSavedWorkflows(userId: Id<"users"> | null) {
-  return useQuery(api.workflows.list, userId ? { userId } : "skip") ?? [];
+export function useSavedWorkflows() {
+  const token = useToken();
+  return useQuery(api.workflows.list, token ? { token } : "skip") ?? [];
 }
 
 export function useWorkflowActions() {
@@ -146,21 +205,18 @@ export function useTaskActions() {
   };
 }
 
-export function useCourierTracking(
-  taskId: Id<"tasks"> | null,
-  courierId: Id<"users"> | null,
-  active: boolean
-) {
+export function useCourierTracking(taskId: Id<"tasks"> | null, active: boolean) {
+  const token = useToken();
   const update = useMutation(api.tasks.updateCourierLoc);
   useEffect(() => {
-    if (!taskId || !courierId || !active || !navigator.geolocation) return;
+    if (!taskId || !token || !active || !navigator.geolocation) return;
     const iv = setInterval(() => {
       navigator.geolocation.getCurrentPosition(
-        (p) => update({ taskId, courierId, lat: p.coords.latitude, lng: p.coords.longitude }),
+        (p) => update({ token, taskId, lat: p.coords.latitude, lng: p.coords.longitude }),
         () => {},
         { enableHighAccuracy: true, timeout: 4000 }
       );
     }, 5000);
     return () => clearInterval(iv);
-  }, [taskId, courierId, active]);
+  }, [taskId, token, active]);
 }

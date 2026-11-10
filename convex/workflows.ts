@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import { requireUser, userForToken } from "./lib/auth";
 
 const stepValidator = v.object({
   order: v.number(),
@@ -14,16 +15,18 @@ const stepValidator = v.object({
 // Save a workflow template
 export const save = mutation({
   args: {
-    userId: v.id("users"),
+    token: v.string(),
     name: v.string(),
     category: v.string(),
     taskType: v.string(),
     defaultRunners: v.number(),
     steps: v.array(stepValidator),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, { token, ...args }) => {
+    const user = await requireUser(ctx, token);
     return await ctx.db.insert("savedWorkflows", {
       ...args,
+      userId: user._id,
       createdAt: Date.now(),
       usedCount: 0,
     });
@@ -32,8 +35,11 @@ export const save = mutation({
 
 // List user's saved workflows
 export const list = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }) => {
+    const user = await userForToken(ctx, token);
+    if (!user) return [];
+    const userId = user._id;
     return await ctx.db
       .query("savedWorkflows")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -43,19 +49,21 @@ export const list = query({
 
 // Delete a saved workflow
 export const remove = mutation({
-  args: { workflowId: v.id("savedWorkflows"), userId: v.id("users") },
-  handler: async (ctx, { workflowId, userId }) => {
+  args: { token: v.string(), workflowId: v.id("savedWorkflows") },
+  handler: async (ctx, { token, workflowId }) => {
+    const user = await requireUser(ctx, token);
     const wf = await ctx.db.get(workflowId);
-    if (!wf || wf.userId !== userId) throw new Error("Not yours");
+    if (!wf || wf.userId !== user._id) throw new ConvexError("Not yours");
     await ctx.db.delete(workflowId);
   },
 });
 
 // Increment usage count when a workflow is reused
 export const markUsed = mutation({
-  args: { workflowId: v.id("savedWorkflows") },
-  handler: async (ctx, { workflowId }) => {
+  args: { token: v.string(), workflowId: v.id("savedWorkflows") },
+  handler: async (ctx, { token, workflowId }) => {
+    const user = await requireUser(ctx, token);
     const wf = await ctx.db.get(workflowId);
-    if (wf) await ctx.db.patch(workflowId, { usedCount: wf.usedCount + 1 });
+    if (wf && wf.userId === user._id) await ctx.db.patch(workflowId, { usedCount: wf.usedCount + 1 });
   },
 });

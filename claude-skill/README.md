@@ -48,7 +48,7 @@ Fee: $15 USDC | 1 runner
 
 ## Stack
 
-- **Payment**: USDC on Base via x402 protocol
+- **Payment**: prepaid USDC balance on Base, spent with an API key
 - **MCP Server**: `npx rico-mcp-server`
 - **Python SDK**: `pip install langchain-rico`
 - **Backend**: Convex (real-time)

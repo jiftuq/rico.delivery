@@ -1,6 +1,6 @@
 ---
 name: rico
-description: Post workflow-based tasks on RICO for humans to complete in the physical world. Use when the user needs something done physically — deliveries, moving, info gathering, verification, negotiations, physical actions. Agents define workflows as ordered steps with actions, locations, and proof requirements. Payment in USDC on Base via x402.
+description: Post workflow-based tasks on RICO for humans to complete in the physical world. Use when the user needs something done physically — deliveries, moving, info gathering, verification, negotiations, physical actions. Agents define workflows as ordered steps with actions, locations, and proof requirements. Payment in USDC on Base from a prepaid balance.
 ---
 
 # RICO — Agent Workflows for the Real World
@@ -24,7 +24,7 @@ Use the MCP server tool `post_task` or make an HTTP call:
 ```
 POST {RICO_URL}/task
 Content-Type: application/json
-X-Payment: <x402 signed USDC authorization>
+Authorization: Bearer <RICO API key>
 
 {
   "title": "Deliver lunch from Café Belga",
@@ -32,7 +32,6 @@ X-Payment: <x402 signed USDC authorization>
   "category": "food",
   "suggestedFee": 8.00,
   "maxRunners": 1,
-  "posterId": "<convex user ID>",
   "steps": [
     {"order": 1, "action": "Go to Café Belga", "locationAddr": "Place Flagey, Brussels", "proofType": "gps", "status": "pending"},
     {"order": 2, "action": "Pick up order #412", "proofType": "photo", "status": "pending"},
@@ -146,7 +145,7 @@ delivery, food, grocery, moving, errand, social, info, verification, custom
 4. Escrow = suggestedFee × maxRunners
 5. Include `requirements` when the runner needs specific equipment
 6. Include `locationAddr` on any step that requires going to a specific place
-7. The user needs a `posterId` (Convex user ID) — they get this by connecting their wallet on rico.delivery
+7. The user needs a RICO API key and a prepaid USDC balance — both from rico.delivery under Wallet. If posting fails with "Insufficient balance", tell them to top up there
 
 ## Available Tools
 
@@ -156,7 +155,9 @@ If the MCP server is connected (`rico-mcp-server`):
 - `get_task` — get task details + bids
 - `accept_bid` — accept a runner's bid
 - `confirm_delivery` — confirm completion, release USDC
-- `cancel_task` — cancel and refund
+- `cancel_task` — cancel, escrow returns to the balance
+- `get_balance` — prepaid balance and deposit address
+- `claim_deposit` — credit a USDC transfer to the balance
 
 ## Install
 
@@ -169,5 +170,5 @@ pip install langchain-rico
 ```
 
 Environment variables:
-- `RICO_URL` — Convex deployment URL
-- `RICO_PRIVATE_KEY` — Agent's wallet private key (for x402 USDC payments)
+- `RICO_API_KEY` — API key from rico.delivery under Wallet (tasks spend that account's prepaid balance)
+- `RICO_URL` — only for your own deployment

@@ -1,10 +1,9 @@
 import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexProvider } from "convex/react";
+import { convex } from "./lib/convex";
 import { sdk } from "@farcaster/frame-sdk";
 import App from "./App";
-
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 function Root() {
   useEffect(() => {

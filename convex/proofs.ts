@@ -1,10 +1,12 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
+import { requireUser } from "./lib/auth";
 
 // Generate a URL for file upload (Convex storage)
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    await requireUser(ctx, token);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -12,17 +14,25 @@ export const generateUploadUrl = mutation({
 // Save proof file metadata after upload
 export const saveProofFile = mutation({
   args: {
+    token: v.string(),
     taskId: v.id("tasks"),
-    runnerId: v.id("users"),
     stepOrder: v.optional(v.number()),
     storageId: v.string(),
     fileType: v.string(),
     fileName: v.optional(v.string()),
     caption: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, { token, ...args }) => {
+    // Only a runner working on the task can attach proof to it.
+    const user = await requireUser(ctx, token);
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new ConvexError("Task not found");
+    const assigned = task.courierId === user._id || (await ctx.db.query("taskRunners")
+      .withIndex("by_task_runner", (q) => q.eq("taskId", args.taskId).eq("runnerId", user._id)).first()) !== null;
+    if (!assigned) throw new ConvexError("Only a runner on this task can upload proof");
     return await ctx.db.insert("proofFiles", {
       ...args,
+      runnerId: user._id,
       createdAt: Date.now(),
     });
   },

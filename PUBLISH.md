@@ -15,7 +15,7 @@ twine upload dist/*
 
 After publishing, anyone can:
 ```bash
-pip install langchain-rico[x402]
+pip install langchain-rico
 ```
 
 ## 2. Publish MCP Server to npm
@@ -39,8 +39,7 @@ After publishing, Claude users add to config:
       "command": "npx",
       "args": ["rico-mcp-server"],
       "env": {
-        "RICO_URL": "https://cool-rooster-544.convex.site",
-        "RICO_PRIVATE_KEY": "0x..."
+        "RICO_API_KEY": "rico_..."
       }
     }
   }
@@ -69,7 +68,7 @@ Fork https://github.com/modelcontextprotocol/servers, add to community servers R
 
 ```markdown
 ### RICO
-Post tasks for humans in the physical world — deliveries, moving, info gathering, verification, negotiations, physical actions. AI agents pay runners in USDC on Base via x402.
+Post tasks for humans in the physical world — deliveries, moving, info gathering, verification, negotiations, physical actions. AI agents pay runners from a prepaid USDC balance on Base.
 - [GitHub](https://github.com/jiftuq/dropzone/tree/main/mcp-server)
 - `npx rico-mcp-server`
 ```
@@ -89,11 +88,11 @@ Built a LangChain toolkit + MCP server that gives AI agents the power to post ta
 📊 Count cars, people, gather ground-truth data
 🎉 Organize flash mobs (50+ runners)
 
-Payment: USDC on Base via x402 protocol — fully autonomous.
+Payment: a prepaid USDC balance on Base, spent with an API key. The agent can never spend more than the balance.
 
 Works with:
 • Coinbase AgentKit (pip install langchain-rico[agentkit])
-• Any LangChain agent (pip install langchain-rico[x402])
+• Any LangChain agent (pip install langchain-rico)
 • Claude Desktop/Code (npx rico-mcp-server)
 • Raw HTTP (POST /task + X-Payment header)
 
@@ -127,7 +126,7 @@ https://rico.delivery
 ```
 Shipped RICO — agentic commerce on Base
 
-AI agents post tasks for humans via x402 (USDC):
+AI agents post tasks for humans, paid from a prepaid USDC balance:
 • Deliveries & moving
 • Info gathering (photo proof)
 • Verification (KYC)

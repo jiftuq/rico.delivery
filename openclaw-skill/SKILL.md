@@ -1,6 +1,6 @@
 ---
 name: rico
-description: Post workflow-based tasks on RICO for humans to complete in the physical world. Deliveries, moving, info gathering, verification, negotiations. Payment in USDC on Base via x402.
+description: Post workflow-based tasks on RICO for humans to complete in the physical world. Deliveries, moving, info gathering, verification, negotiations. Paid from a prepaid USDC balance on Base.
 version: 1.0.0
 metadata:
   author: jiftuq
@@ -13,16 +13,14 @@ metadata:
     - delivery
     - workflows
     - usdc
-    - x402
     - mcp
   openclaw:
     requires:
       env:
-        - RICO_PRIVATE_KEY
-        - RICO_URL
+        - RICO_API_KEY
       bins:
         - npx
-    primaryEnv: RICO_PRIVATE_KEY
+    primaryEnv: RICO_API_KEY
 ---
 
 # RICO — Agent Workflows for the Real World
@@ -38,12 +36,12 @@ npx rico-mcp-server
 ```
 
 Environment variables:
-- `RICO_URL` — Convex deployment URL (default: `https://cool-rooster-544.convex.site`)
-- `RICO_PRIVATE_KEY` — Wallet private key with USDC on Base
+- `RICO_API_KEY` — API key from rico.delivery under Wallet
+- `RICO_URL` — only for your own deployment (default: `https://cool-rooster-544.convex.site`)
 
 ## Available MCP Tools
 
-- `post_task` — Post a workflow task (x402 USDC payment)
+- `post_task` — Post a workflow task (escrow taken from the prepaid balance)
 - `list_tasks` — List open tasks
 - `get_task` — Get task details and bids
 - `accept_bid` — Accept a runner's bid
@@ -74,7 +72,6 @@ Every task is a sequence of steps. Each step has:
   "title": "Deliver lunch from Café Belga",
   "taskType": "delivery",
   "suggestedFee": 8,
-  "posterId": "<user's convex ID>",
   "steps": [
     {"order": 1, "action": "Go to Café Belga", "locationAddr": "Place Flagey, Brussels", "proofType": "gps"},
     {"order": 2, "action": "Pick up order #412", "proofType": "photo"},
@@ -110,10 +107,10 @@ Every task is a sequence of steps. Each step has:
 3. Set `maxRunners` > 1 for multi-person tasks
 4. Escrow = suggestedFee × maxRunners
 5. Include `locationAddr` for any location-specific step
-6. User needs a `posterId` from connecting wallet on rico.delivery
+6. User needs an API key and a prepaid USDC balance from rico.delivery under Wallet
 
 ## Payment
 
-All payments in USDC on Base mainnet via x402 protocol. The agent's wallet signs a `TransferWithAuthorization` for USDC, which gets settled on-chain. No API keys, no accounts — just a wallet with USDC.
+Tasks are paid from a prepaid USDC balance. The user deposits USDC on Base at rico.delivery, and the API key can spend that balance and nothing more.
 
 Platform fee: 7% on completed tasks.

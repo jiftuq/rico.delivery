@@ -4,7 +4,6 @@
 // Stateless: every request gets a fresh server, so it runs unchanged as a
 // long-lived process (node http.js) or as a serverless function (api/mcp.js).
 import { createServer } from "node:http";
-import { timingSafeEqual } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createRicoServer } from "./server.js";
@@ -18,10 +17,11 @@ function rpcError(res, status, message, headers) {
   send(res, status, { jsonrpc: "2.0", error: { code: -32000, message }, id: null }, headers);
 }
 
-function tokenMatches(header, token) {
-  const given = Buffer.from(header || "");
-  const expected = Buffer.from(`Bearer ${token}`);
-  return given.length === expected.length && timingSafeEqual(given, expected);
+/** The caller's RICO API key: an Authorization header, or ?key= in the URL. */
+function apiKeyFrom(req) {
+  const header = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization || "");
+  if (header) return header[1];
+  return new URL(req.url, "http://localhost").searchParams.get("key") || undefined;
 }
 
 async function readJson(req) {
@@ -34,18 +34,14 @@ async function readJson(req) {
 /**
  * Handle one MCP request on a Node (req, res) pair.
  *
- * The wallet is only ever used when RICO_MCP_TOKEN is set and the caller sends
- * it as a bearer token. Without a token the endpoint is open, and an open
- * endpoint must not be able to spend RICO_PRIVATE_KEY.
+ * The server holds no secrets of its own. Each caller brings their own RICO
+ * API key, which is passed straight through to the RICO API; without one,
+ * only the public read tools work. claude.ai connectors cannot send custom
+ * headers, so the key may also be given as ?key= in the connector URL.
  */
 export async function handleMcpRequest(req, res, { maxWaitSeconds } = {}) {
   if (req.method !== "POST") {
     return rpcError(res, 405, "Method not allowed. This server is stateless: use POST.", { Allow: "POST" });
-  }
-
-  const token = process.env.RICO_MCP_TOKEN;
-  if (token && !tokenMatches(req.headers.authorization, token)) {
-    return rpcError(res, 401, "Unauthorized", { "WWW-Authenticate": "Bearer" });
   }
 
   let body;
@@ -55,7 +51,7 @@ export async function handleMcpRequest(req, res, { maxWaitSeconds } = {}) {
     return send(res, 400, { jsonrpc: "2.0", error: { code: -32700, message: "Parse error" }, id: null });
   }
 
-  const server = createRicoServer({ allowWallet: Boolean(token), maxWaitSeconds });
+  const server = createRicoServer({ apiKey: apiKeyFrom(req), maxWaitSeconds });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => {
     transport.close();
@@ -79,8 +75,7 @@ export function startHttpServer({ port = Number(process.env.PORT) || 3333 } = {}
     send(res, 404, { error: "Not found. The MCP endpoint is /mcp." });
   });
   httpServer.listen(port, () => {
-    const wallet = process.env.RICO_MCP_TOKEN && process.env.RICO_PRIVATE_KEY ? "enabled" : "disabled";
-    console.error(`RICO MCP server on http://localhost:${port}/mcp (wallet ${wallet})`);
+    console.error(`RICO MCP server on http://localhost:${port}/mcp`);
   });
   return httpServer;
 }

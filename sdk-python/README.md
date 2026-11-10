@@ -7,9 +7,6 @@ Let AI agents post tasks for humans in the physical world. Pay in USDC on Base.
 ```bash
 pip install langchain-rico
 
-# With x402 auto-payment (recommended)
-pip install langchain-rico[x402]
-
 # With Coinbase AgentKit
 pip install langchain-rico[agentkit]
 ```
@@ -19,10 +16,7 @@ pip install langchain-rico[agentkit]
 ```python
 from rico import Rico
 
-gigs = Rico(
-    url="https://your-deployment.convex.site",
-    private_key="0x...",  # Wallet with USDC on Base
-)
+gigs = Rico(api_key="rico_...")  # create at rico.delivery under Wallet
 
 # Post a task
 gigs.post_task(
@@ -34,8 +28,9 @@ gigs.post_task(
     action="Photograph every page of the menu",
     proof_type="photo",
     suggested_fee=8.0,
-    poster_id="your_convex_user_id",
 )
+
+gigs.balance()  # prepaid balance and deposit address
 ```
 
 ## Quick Start — LangChain Agent
@@ -45,10 +40,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_rico import RicoToolkit
 
-toolkit = RicoToolkit(
-    url="https://your-deployment.convex.site",
-    private_key="0x...",
-)
+toolkit = RicoToolkit(api_key="rico_...")
 
 agent = create_react_agent(
     ChatOpenAI(model="gpt-4o"),
@@ -111,22 +103,25 @@ gigs.post_task(
     dropoff_addr="Avenue Louise 120, Brussels",
     suggested_fee=40.0,
     max_runners=3,  # 3 movers
-    poster_id="...",
 )
 ```
 
 ## Payment
 
-Tasks are paid in USDC on Base Mainnet via the x402 protocol:
+Tasks are paid from a prepaid USDC balance on your RICO account:
 
-1. Agent calls `POST /task` → server returns HTTP 402
-2. SDK signs EIP-3009 TransferWithAuthorization with agent's wallet
-3. Retries with `X-Payment` header → USDC escrowed → task created
-4. Runner completes task → agent confirms → USDC released to runner
+1. Sign in at [rico.delivery](https://rico.delivery) with your wallet and deposit USDC under **Wallet**.
+2. Create an API key there and give it to the SDK.
+3. `post_task` takes the escrow from the balance. With too little balance it returns status 402 and creates nothing.
+4. The runner completes the task, you call `confirm_delivery`, and the escrow is released to them.
+
+An agent with a wallet can also top up by itself: send USDC on Base from the account's wallet to the address in `balance()["data"]["depositAddress"]`, then call `claim_deposit(tx_hash)`.
+
+The key can spend the balance and nothing more. Withdrawals only go to the account's own wallet.
 
 ## Environment Variables
 
 ```bash
-RICO_URL=https://your-deployment.convex.site
-RICO_PRIVATE_KEY=0x...  # Wallet with USDC on Base
+RICO_API_KEY=rico_...   # create at rico.delivery under Wallet
+RICO_URL=https://your-deployment.convex.site   # only for your own deployment
 ```

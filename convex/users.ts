@@ -1,35 +1,28 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireUser } from "./lib/auth";
 
-export const getOrCreate = mutation({
-  args: { walletAddress: v.string(), displayName: v.optional(v.string()) },
-  handler: async (ctx, { walletAddress, displayName }) => {
-    const existing = await ctx.db.query("users").withIndex("by_wallet", q => q.eq("walletAddress", walletAddress)).first();
-    if (existing) return existing._id;
-    return await ctx.db.insert("users", {
-      walletAddress,
-      displayName: displayName || walletAddress.slice(0, 6) + "..." + walletAddress.slice(-4),
-      balance: 0, score: 5.0,
-      totalRatings: 0, ratingSum: 0, deliveries: 0, tasksPosted: 0, createdAt: Date.now(),
-    });
-  },
-});
+// Accounts are created by signing in with a wallet (see auth.ts).
+// These are the public, read-only views of a user: no balance.
+
+function publicUser(user: any) {
+  const { balance: _b, balanceMicro: _m, ...rest } = user;
+  return rest;
+}
 
 export const get = query({
   args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => await ctx.db.get(userId),
-});
-
-export const getByWallet = query({
-  args: { walletAddress: v.string() },
-  handler: async (ctx, { walletAddress }) =>
-    await ctx.db.query("users").withIndex("by_wallet", q => q.eq("walletAddress", walletAddress)).first(),
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    return user ? publicUser(user) : null;
+  },
 });
 
 export const updateLocation = mutation({
-  args: { userId: v.id("users"), lat: v.float64(), lng: v.float64() },
-  handler: async (ctx, { userId, lat, lng }) => {
-    await ctx.db.patch(userId, { lastLat: lat, lastLng: lng });
+  args: { token: v.string(), lat: v.float64(), lng: v.float64() },
+  handler: async (ctx, { token, lat, lng }) => {
+    const user = await requireUser(ctx, token);
+    await ctx.db.patch(user._id, { lastLat: lat, lastLng: lng });
   },
 });
 
@@ -43,7 +36,6 @@ export const getProfile = query({
       const rater = await ctx.db.get(r.raterId);
       return { ...r, raterName: rater?.displayName || "Anon" };
     }));
-    return { ...user, reviews: enriched };
+    return { ...publicUser(user), reviews: enriched };
   },
 });
-
