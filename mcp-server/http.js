@@ -17,6 +17,19 @@ function rpcError(res, status, message, headers) {
   send(res, status, { jsonrpc: "2.0", error: { code: -32000, message }, id: null }, headers);
 }
 
+const ALLOWED_ORIGINS = ["https://claude.ai", "https://claude.com", "https://rico.delivery",
+  ...(process.env.RICO_MCP_ALLOWED_ORIGINS || "").split(",").map((o) => o.trim()).filter(Boolean)];
+
+function originAllowed(origin) {
+  if (!origin) return true;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || ALLOWED_ORIGINS.includes(origin);
+  } catch {
+    return false;
+  }
+}
+
 /** The caller's RICO API key: an Authorization header, or ?key= in the URL. */
 function apiKeyFrom(req) {
   const header = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization || "");
@@ -43,6 +56,11 @@ export async function handleMcpRequest(req, res, { maxWaitSeconds } = {}) {
   if (req.method !== "POST") {
     return rpcError(res, 405, "Method not allowed. This server is stateless: use POST.", { Allow: "POST" });
   }
+
+  // Browsers send an Origin header; server-side MCP clients do not. Refusing
+  // unknown origins stops a web page from driving this endpoint from a
+  // visitor's browser (DNS rebinding).
+  if (!originAllowed(req.headers.origin)) return rpcError(res, 403, "Origin not allowed");
 
   let body;
   try {

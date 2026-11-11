@@ -157,7 +157,6 @@ If the MCP server is connected (`rico-mcp-server`):
 - `confirm_delivery` — confirm completion, release USDC
 - `cancel_task` — cancel, escrow returns to the balance
 - `get_balance` — prepaid balance and deposit address
-- `claim_deposit` — credit a USDC transfer to the balance
 
 ## Install
 

@@ -40,7 +40,7 @@ async function api(method, path, { body, apiKey, auth = false } = {}) {
 function toolResult({ ok, status, data }) {
   if (ok) return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
   const hint = status === 402
-    ? " Add USDC to the balance at rico.delivery under Wallet, or send USDC from the account's wallet to the deposit address shown by get_balance and call claim_deposit."
+    ? " Add USDC to the balance at rico.delivery under Wallet, then try again."
     : "";
   return { isError: true, content: [{ type: "text", text: `${data?.error || `Request failed (HTTP ${status})`}${hint}` }] };
 }
@@ -57,8 +57,22 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
   const server = new McpServer({ name: "rico", version: VERSION });
   const call = (method, path, body) => api(method, path, { body, apiKey, auth: true });
 
+  // Titles and behaviour hints, so clients can tell reads from actions that
+  // commit funds or cannot be undone.
+  const META = {
+    post_task: { title: "Post a RICO task", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } },
+    place_bid: { title: "Bid on a RICO task", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } },
+    accept_bid: { title: "Accept a bid", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } },
+    confirm_delivery: { title: "Confirm delivery and pay the runner", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
+    cancel_task: { title: "Cancel a RICO task", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true } },
+    health: { title: "Check RICO status", annotations: { readOnlyHint: true, openWorldHint: true } },
+    wait_for_bids: { title: "Wait for bids", annotations: { readOnlyHint: true, openWorldHint: true } },
+  };
+  const tool = (name, description, inputSchema, handler) =>
+    server.registerTool(name, { ...META[name], description, inputSchema }, handler);
+
   // Tool: Post a workflow-based task
-  server.tool(
+  tool(
     "post_task",
     "Post a workflow-based task on RICO for a human runner. Every task is a sequence of steps. Each step has an action, optional location, proof type, and requirements. The escrow (fee x runners, plus item cost) is taken from the account's prepaid USDC balance; posting fails if the balance is too low. Always prefer using 'steps' to define the workflow.",
     {
@@ -204,7 +218,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
   );
 
   // Tool: Place a bid on a task
-  server.tool(
+  tool(
     "place_bid",
     "Place a bid on an open task as a runner. You cannot bid on your own task.",
     {
@@ -219,7 +233,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
   );
 
   // Tool: Accept a bid (poster only)
-  server.tool(
+  tool(
     "accept_bid",
     "Accept a runner's bid on your task. If the bid is above the suggested fee the difference is taken from your balance; if below, it is returned.",
     {
@@ -230,7 +244,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
   );
 
   // Tool: Confirm delivery and pay runner
-  server.tool(
+  tool(
     "confirm_delivery",
     "Confirm a runner completed your task and release the escrowed USDC to them. This cannot be undone: check the proof first.",
     {
@@ -243,7 +257,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
   );
 
   // Tool: Cancel a task and get refund
-  server.tool(
+  tool(
     "cancel_task",
     "Cancel one of your open tasks. The escrow returns to your RICO balance. Not possible once a runner has been accepted.",
     {
@@ -257,25 +271,15 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
     "get_balance",
     {
       title: "Get RICO balance",
-      description: "Show the account's prepaid USDC balance, the address to deposit USDC to, and recent balance activity.",
+      description: "Show the account's prepaid USDC balance and recent balance activity. The balance is topped up on rico.delivery, not through this server.",
       inputSchema: {},
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async () => toolResult(await call("GET", "/me"))
   );
 
-  // Tool: Claim a deposit
-  server.tool(
-    "claim_deposit",
-    "Credit a USDC transfer to the balance. The transfer must already be confirmed on Base, sent from the account's own wallet to the deposit address shown by get_balance. Each transaction can be claimed once.",
-    {
-      txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).describe("Transaction hash of the USDC transfer on Base"),
-    },
-    async (args) => toolResult(await call("POST", "/deposit", args))
-  );
-
   // Tool: Check health
-  server.tool(
+  tool(
     "health",
     "Check if the RICO server is running.",
     {},
@@ -291,7 +295,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
   );
 
   // Tool: Wait for bids on a task (SSE subscription)
-  server.tool(
+  tool(
     "wait_for_bids",
     "Subscribe to a task and wait for runners to place bids. Returns when at least one new bid arrives or after timeout. Use this after posting a task to watch for incoming bids.",
     {

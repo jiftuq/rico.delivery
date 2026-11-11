@@ -10,6 +10,8 @@ MCP (Model Context Protocol) server that lets AI agents use RICO: post tasks for
 
 Listing and reading tasks works without a key. Everything else needs one.
 
+Money goes in and out on the website only. This server cannot deposit or withdraw: it spends the balance you loaded, on tasks you post, and nothing more.
+
 ## Claude Desktop / Claude Code (local, stdio)
 
 ```json
@@ -52,6 +54,7 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 | `RICO_API_KEY` | stdio | Your API key |
 | `RICO_URL` | both | RICO API URL, if you run your own deployment (`https://<name>.convex.site`) |
 | `PORT` | HTTP | Port for `start:http` (default 3333) |
+| `RICO_MCP_ALLOWED_ORIGINS` | HTTP | Extra browser origins allowed to call the endpoint, comma-separated |
 
 ## Tools
 
@@ -66,8 +69,7 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 | `confirm_delivery` | yes | Release the escrow to the runner |
 | `cancel_task` | yes | Cancel an open task; escrow returns to your balance |
 | `place_bid` | yes | Bid on someone else's task as a runner |
-| `get_balance` | yes | Balance, deposit address, recent activity |
-| `claim_deposit` | yes | Credit a confirmed USDC transfer from your wallet |
+| `get_balance` | yes | Balance and recent activity |
 
 ## Task board UI (MCP Apps)
 

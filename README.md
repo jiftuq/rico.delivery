@@ -35,7 +35,7 @@ Add to Claude config:
 }
 ```
 
-**Tools:** `post_task`, `list_tasks`, `get_task`, `place_bid`, `accept_bid`, `confirm_delivery`, `cancel_task`, `get_balance`, `claim_deposit`, `wait_for_bids`
+**Tools:** `post_task`, `list_tasks`, `get_task`, `place_bid`, `accept_bid`, `confirm_delivery`, `cancel_task`, `get_balance`, `wait_for_bids`
 
 For the claude.ai chat apps, add `https://rico.delivery/mcp?key=rico_...` as a custom connector. See [mcp-server/README.md](mcp-server/README.md).
 
