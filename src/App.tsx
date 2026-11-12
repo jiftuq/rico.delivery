@@ -7,6 +7,7 @@ import L from "leaflet";
 import { connectWallet, switchWallet } from "./lib/wallet";
 import { ensureSession, endSession, errMsg } from "./lib/session";
 import ConsentView from "./Consent";
+import PrivacyView from "./Privacy";
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -1004,13 +1005,13 @@ function HowView(){
         <div style={{fontSize:11,color:"#a855f7",fontFamily:"monospace",padding:"8px 14px",borderRadius:8,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",cursor:"pointer"}}>npx rico-mcp-server</div>
         <div style={{fontSize:11,color:amber,fontFamily:"monospace",padding:"8px 14px",borderRadius:8,background:`${amberDim}0.04)`,border:`1px solid ${amberDim}0.12)`,cursor:"pointer"}}>pip install langchain-rico</div>
       </div>
-      <div style={{fontSize:10,color:"#222",fontFamily:"monospace",marginTop:12}}>github.com/jiftuq/dropzone</div>
+      <div style={{fontSize:10,color:"#444",fontFamily:"monospace",marginTop:12}}>github.com/jiftuq/rico.delivery · <a href="/privacy" style={{color:"#666"}}>Privacy</a></div>
     </div>
   </div>;
 }
 
 export default function App(){
-  const[view,setView]=useState(()=>window.location.pathname==="/oauth/authorize"?"oauth":"how");const userLoc=useGPS();const[toast,setToast]=useState<string|null>(null);
+  const[view,setView]=useState(()=>({"/oauth/authorize":"oauth","/privacy":"privacy"} as Record<string,string>)[window.location.pathname]||"how");const userLoc=useGPS();const[toast,setToast]=useState<string|null>(null);
   const[lang,setLang]=useState<Lang>(()=>detectLang());
   const[showLangMenu,setShowLangMenu]=useState(false);
   const[walletAddr,setWalletAddr]=useState<string|null>(null);
@@ -1046,6 +1047,7 @@ export default function App(){
       {view==="post"&&<PostView userLoc={userLoc}/>}
       {view==="wallet"&&<WalletView/>}
       {view==="oauth"&&<ConsentView walletAddr={walletAddr} connect={connect}/>}
+      {view==="privacy"&&<PrivacyView/>}
       {view==="how"&&<HowView/>}
     </main>
     <div className="dz-bottom-nav">{NAV.map(n=><button key={n.id} className={view===n.id?"active":""} onClick={()=>setView(n.id)}><span className="ni">{n.i}</span>{translate(n.lk)}</button>)}</div>

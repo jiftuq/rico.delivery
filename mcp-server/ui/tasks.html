@@ -242,7 +242,7 @@
         stat("Fee per runner", usdc(t.suggestedFee)),
         // Tasks posted before prepaid balances carry a fee but hold no funds.
         stat("In escrow", t.escrowMicro === undefined ? "unfunded" : usdc(t.totalEscrowed)),
-        stat("Status", t.status || "–"),
+        stat("Status", (t.status || "–").replace(/_/g, " ")),
         stat("Runners", (t.acceptedCount || 0) + "/" + (t.maxRunners || 1))),
       el("div", { class: "meta" }, el("span", { class: "chip" }, t.taskType || "delivery"), " ",
         t.locationAddr || t.pickupAddr || "",
