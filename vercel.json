@@ -33,7 +33,7 @@
       "destination": "/api/oauth-metadata"
     },
     {
-      "source": "/((?!\\.well-known/|assets/|api/|og\\.|logo\\.).*)",
+      "source": "/((?!\\.well-known/|assets/|listing/|api/|og\\.|logo\\.).*)",
       "destination": "/index.html"
     }
   ]
