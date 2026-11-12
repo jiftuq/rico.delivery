@@ -3,10 +3,38 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "api/mcp.js": { "maxDuration": 60, "includeFiles": "mcp-server/**" }
+    "api/mcp.js": {
+      "maxDuration": 60,
+      "includeFiles": "mcp-server/**"
+    },
+    "api/oauth-metadata.js": {
+      "includeFiles": "mcp-server/**"
+    }
   },
   "rewrites": [
-    { "source": "/mcp", "destination": "/api/mcp" },
-    { "source": "/((?!\\.well-known/|assets/|api/|og\\.|logo\\.).*)", "destination": "/index.html" }
+    {
+      "source": "/mcp",
+      "destination": "/api/mcp"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "/api/oauth-metadata"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource/:path*",
+      "destination": "/api/oauth-metadata"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server",
+      "destination": "/api/oauth-metadata"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server/:path*",
+      "destination": "/api/oauth-metadata"
+    },
+    {
+      "source": "/((?!\\.well-known/|assets/|api/|og\\.|logo\\.).*)",
+      "destination": "/index.html"
+    }
   ]
 }

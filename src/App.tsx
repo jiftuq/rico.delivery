@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
 import { Id } from "../convex/_generated/dataModel";
-import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions, useFunds, useApiKeys } from "./hooks/useRico";
+import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions, useFunds, useApiKeys, useConnectedApps } from "./hooks/useRico";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
 import { connectWallet, switchWallet } from "./lib/wallet";
 import { ensureSession, endSession, errMsg } from "./lib/session";
+import ConsentView from "./Consent";
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -683,7 +684,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
 }
 
 function WalletView(){
-  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user}=useUser(walletAddr);const stats=useStats();const funds=useFunds();const{keys,createKey,revokeKey}=useApiKeys();const[busy,setBusy]=useState<string|null>(null);const[newKey,setNewKey]=useState<string|null>(null);
+  const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user}=useUser(walletAddr);const stats=useStats();const funds=useFunds();const{keys,createKey,revokeKey}=useApiKeys();const{apps,disconnectApp}=useConnectedApps();const[busy,setBusy]=useState<string|null>(null);const[newKey,setNewKey]=useState<string|null>(null);
   const act=async(label:string,fn:()=>Promise<any>)=>{setBusy(label);try{await fn()}catch(e:any){alert(errMsg(e))}finally{setBusy(null)}};
   const askAmount=(q:string)=>{const v=prompt(q);if(!v)return null;const n=parseFloat(v.replace(",","."));if(!(n>0)){alert("Enter an amount above zero");return null}return n};
   const doDeposit=()=>{const n=askAmount("How much USDC to add to your RICO balance?");if(n)act("deposit",()=>funds.topUp(n))};
@@ -712,6 +713,12 @@ function WalletView(){
       <div style={{fontSize:11,color:"#555",marginTop:10,lineHeight:1.5}}>Posting a task takes its fee from this balance. Cancelled and refunded tasks come back here. Withdrawals go to this wallet only. <button style={{background:"none",border:"none",color:"#0052ff",fontSize:11,padding:0,cursor:"pointer"}} onClick={doClaim}>Sent USDC already? Claim it</button></div>
       {funds.summary?.withdrawals?.slice(0,3).map((w:any)=><div key={w._id} style={{fontSize:11,color:"#666",marginTop:6,fontFamily:"monospace"}}>↗ ${w.amount.toFixed(2)} · {w.status==="failed"?"failed, returned to balance":w.status==="review"?"being checked":w.status}{w.txHash?<> · <a style={{color:"#0052ff"}} href={`https://basescan.org/tx/${w.txHash}`} target="_blank" rel="noreferrer">tx</a></>:null}</div>)}
     </div>
+
+    {apps.length>0&&<div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:12}}>
+      <div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🔗 Connected apps</div>
+      <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>Apps you allowed to act for you and spend this balance.</div>
+      {apps.map((a:any)=><div key={a.clientId} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.03)",marginTop:8,fontSize:12,color:"#888"}}><span>{a.label} <span style={{color:"#555"}}>· since {new Date(a.since).toLocaleDateString()}</span></span><button style={{background:"none",border:"none",color:"#ff4757",fontSize:11,cursor:"pointer"}} onClick={()=>{if(confirm(`Disconnect "${a.label}"? It will stop working until you connect it again.`))act("key",()=>disconnectApp(a.clientId))}}>Disconnect</button></div>)}
+    </div>}
 
     <div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🔑 API keys</div><button style={{...S.bidAccBtn,fontSize:11,padding:"6px 12px",minHeight:30}} disabled={!!busy} onClick={doNewKey}>＋ New key</button></div>
@@ -1003,7 +1010,7 @@ function HowView(){
 }
 
 export default function App(){
-  const[view,setView]=useState("how");const userLoc=useGPS();const[toast,setToast]=useState<string|null>(null);
+  const[view,setView]=useState(()=>window.location.pathname==="/oauth/authorize"?"oauth":"how");const userLoc=useGPS();const[toast,setToast]=useState<string|null>(null);
   const[lang,setLang]=useState<Lang>(()=>detectLang());
   const[showLangMenu,setShowLangMenu]=useState(false);
   const[walletAddr,setWalletAddr]=useState<string|null>(null);
@@ -1038,6 +1045,7 @@ export default function App(){
       {(view==="home"||view==="tasks")&&<TaskListView userLoc={userLoc}/>}
       {view==="post"&&<PostView userLoc={userLoc}/>}
       {view==="wallet"&&<WalletView/>}
+      {view==="oauth"&&<ConsentView walletAddr={walletAddr} connect={connect}/>}
       {view==="how"&&<HowView/>}
     </main>
     <div className="dz-bottom-nav">{NAV.map(n=><button key={n.id} className={view===n.id?"active":""} onClick={()=>setView(n.id)}><span className="ni">{n.i}</span>{translate(n.lk)}</button>)}</div>

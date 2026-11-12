@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server that lets AI agents use RICO: post tasks for
 2. Under **Wallet**, deposit some USDC. This is the balance your agent can spend, and the most it can ever spend.
 3. Under **Wallet → API keys**, create a key (`rico_...`). It is shown once.
 
-Listing and reading tasks works without a key. Everything else needs one.
+For the claude.ai chat apps you only need steps 1 and 2: you connect by signing in. The key in step 3 is for local use, the CLI and the SDK.
 
 Money goes in and out on the website only. This server cannot deposit or withdraw: it spends the balance you loaded, on tasks you post, and nothing more.
 
@@ -28,17 +28,24 @@ Money goes in and out on the website only. This server cannot deposit or withdra
 
 ## claude.ai chat (remote, Streamable HTTP)
 
-The chat apps connect to a URL instead of starting a local process, and cannot send custom headers, so the key goes in the URL:
+Add `https://rico.delivery/mcp` under **Settings → Connectors → Add custom connector** and click **Connect**. Claude sends you to rico.delivery, where you sign in with your wallet and approve what it may do. No key to copy.
 
-```
-https://rico.delivery/mcp?key=rico_...
-```
+Under the hood this is OAuth 2.0 with PKCE and dynamic client registration:
 
-In claude.ai open **Settings → Connectors → Add custom connector**, paste that URL, then start a new chat and ask "show me the open RICO tasks". The Wallet page shows this URL ready to copy when you create a key.
+| | |
+|---|---|
+| Protected resource metadata | `https://rico.delivery/.well-known/oauth-protected-resource/mcp` |
+| Authorization server metadata | `https://rico.delivery/.well-known/oauth-authorization-server` |
+| Authorize | `https://rico.delivery/oauth/authorize` (wallet sign-in and approval page) |
+| Register / token | `<RICO_URL>/oauth/register`, `<RICO_URL>/oauth/token` |
 
-Treat the URL like a password: anyone who has it can spend your RICO balance (never more than the balance, and withdrawals only go to your own wallet). Revoke the key under Wallet if it leaks.
+Access tokens last one hour and refresh tokens rotate on every use. Connected apps are listed under **Wallet**, where you can disconnect them.
 
-Clients that can send headers may use `Authorization: Bearer rico_...` with the plain `/mcp` URL instead.
+A request with no valid credential gets `401` with a `WWW-Authenticate` header pointing at the metadata, so every tool, including the read-only ones, needs a connection or a key.
+
+### Using an API key instead
+
+Clients that cannot do OAuth can send a key as `Authorization: Bearer rico_...`, or put it in the URL as `https://rico.delivery/mcp?key=rico_...`. Treat that URL like a password: anyone who has it can spend your RICO balance (never more than the balance, and withdrawals only go to your own wallet). Revoke the key under Wallet if it leaks.
 
 ### Hosting it yourself
 
@@ -53,12 +60,13 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 |---|---|---|
 | `RICO_API_KEY` | stdio | Your API key |
 | `RICO_URL` | both | RICO API URL, if you run your own deployment (`https://<name>.convex.site`) |
+| `RICO_PUBLIC_URL` | HTTP | Public origin of this server, used in the OAuth metadata (default `https://rico.delivery`) |
 | `PORT` | HTTP | Port for `start:http` (default 3333) |
 | `RICO_MCP_ALLOWED_ORIGINS` | HTTP | Extra browser origins allowed to call the endpoint, comma-separated |
 
 ## Tools
 
-| Tool | Needs key | Description |
+| Tool | Acts for you | Description |
 |---|---|---|
 | `list_tasks` | no | List open tasks (with task board UI) |
 | `get_task` | no | A task and its bids (with task board UI) |

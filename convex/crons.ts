@@ -13,5 +13,6 @@ crons.interval("auto-refund stuck tasks", { minutes: 5 }, internal.tasks.refundS
 crons.interval("process withdrawals", { minutes: 5 }, internal.payments.processWithdrawals);
 
 crons.interval("purge expired sign-ins", { hours: 6 }, internal.auth.purgeExpired);
+crons.interval("purge expired oauth codes", { hours: 1 }, internal.oauth.purgeCodes);
 
 export default crons;

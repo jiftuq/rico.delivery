@@ -37,7 +37,7 @@ Add to Claude config:
 
 **Tools:** `post_task`, `list_tasks`, `get_task`, `place_bid`, `accept_bid`, `confirm_delivery`, `cancel_task`, `get_balance`, `wait_for_bids`
 
-For the claude.ai chat apps, add `https://rico.delivery/mcp?key=rico_...` as a custom connector. See [mcp-server/README.md](mcp-server/README.md).
+For the claude.ai chat apps, add `https://rico.delivery/mcp` as a custom connector and click Connect: you sign in with your wallet and approve. See [mcp-server/README.md](mcp-server/README.md).
 
 ### Python SDK (LangChain / AgentKit)
 
@@ -135,6 +135,7 @@ src/                          # React frontend (Vite)
 convex/                       # Convex serverless backend
 ├── schema.ts                 # Tables
 ├── auth.ts                   # Wallet sign-in, sessions, API keys
+├── oauth.ts                  # OAuth for MCP clients ("Connect" in Claude)
 ├── wallet.ts                 # Prepaid balances, deposits, withdrawal queue
 ├── tasks.ts                  # Task lifecycle + escrow
 ├── payments.ts               # On-chain deposit checks + USDC payouts

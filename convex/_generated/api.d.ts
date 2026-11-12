@@ -14,6 +14,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_money from "../lib/money.js";
+import type * as oauth from "../oauth.js";
 import type * as payments from "../payments.js";
 import type * as proofs from "../proofs.js";
 import type * as tasks from "../tasks.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/auth": typeof lib_auth;
   "lib/money": typeof lib_money;
+  oauth: typeof oauth;
   payments: typeof payments;
   proofs: typeof proofs;
   tasks: typeof tasks;

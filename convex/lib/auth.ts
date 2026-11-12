@@ -11,7 +11,7 @@ export async function hashToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The user a session token or API key belongs to, or null. */
+/** The user a session token, API key or OAuth access token belongs to, or null. */
 export async function userForToken(
   ctx: QueryCtx | MutationCtx,
   token: string | null | undefined,
@@ -23,6 +23,8 @@ export async function userForToken(
     .withIndex("by_hash", (q) => q.eq("tokenHash", tokenHash))
     .unique();
   if (!row) return null;
+  // A refresh token only buys new tokens at the token endpoint; it is never a credential itself.
+  if (row.kind === "oauthRefresh") return null;
   if (row.expiresAt !== undefined && row.expiresAt < Date.now()) return null;
   return await ctx.db.get(row.userId);
 }

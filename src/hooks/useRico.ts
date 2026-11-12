@@ -106,6 +106,14 @@ export function useBids(taskId: Id<"tasks"> | null) {
   return useQuery(api.tasks.getBids, taskId ? { taskId } : "skip") ?? [];
 }
 
+/** Apps connected through "Connect" (OAuth), e.g. Claude. */
+export function useConnectedApps() {
+  const token = useToken();
+  const apps = useQuery(api.oauth.listConnections, token ? { token } : "skip") ?? [];
+  const disconnect = useAction(api.oauth.disconnectApp);
+  return { apps, disconnectApp: (clientId: string) => disconnect({ token: token!, clientId }) };
+}
+
 export function useChat(taskId: Id<"tasks"> | null) {
   const token = useToken();
   const msgs = useQuery(api.chat.list, taskId && token ? { taskId, token } : "skip") ?? [];

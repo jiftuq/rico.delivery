@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
 import { httpAction, ActionCtx } from "./_generated/server";
 import { api } from "./_generated/api";
+import * as oauth from "./oauth";
 import { Id } from "./_generated/dataModel";
 
 function corsHeaders(origin?: string) {
@@ -584,6 +585,12 @@ for (const [path, handler] of [["/bid", placeBid], ["/deposit", deposit], ["/wit
   http.route({ path, method: "OPTIONS", handler: corsOptions });
 }
 http.route({ path: "/me", method: "GET", handler: me });
+
+// OAuth for MCP clients (metadata is served from rico.delivery/.well-known)
+http.route({ path: "/oauth/register", method: "POST", handler: oauth.register });
+http.route({ path: "/oauth/register", method: "OPTIONS", handler: oauth.preflight });
+http.route({ path: "/oauth/token", method: "POST", handler: oauth.token });
+http.route({ path: "/oauth/token", method: "OPTIONS", handler: oauth.preflight });
 http.route({ path: "/me", method: "OPTIONS", handler: corsOptions });
 
 http.route({ path: "/accept-bid", method: "POST", handler: acceptBid });

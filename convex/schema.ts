@@ -195,7 +195,9 @@ export default defineSchema({
   authTokens: defineTable({
     userId: v.id("users"),
     tokenHash: v.string(),
-    kind: v.string(), // "session" | "apiKey"
+    // "session" | "apiKey" | "oauthAccess" | "oauthRefresh"
+    kind: v.string(),
+    clientId: v.optional(v.string()), // OAuth tokens: the app they were issued to
     label: v.optional(v.string()),
     hint: v.optional(v.string()), // last 4 characters, to tell keys apart
     createdAt: v.number(),
@@ -203,6 +205,27 @@ export default defineSchema({
   })
     .index("by_hash", ["tokenHash"])
     .index("by_user", ["userId"]),
+
+  // ── OAuth (so Claude and other MCP clients can "Connect" an account) ──
+  // Clients register themselves (RFC 7591). Public clients only: no secrets.
+  oauthClients: defineTable({
+    clientId: v.string(),
+    clientName: v.string(),
+    redirectUris: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_client_id", ["clientId"]),
+
+  // One-time authorization codes, valid for a few minutes. Hash only.
+  oauthCodes: defineTable({
+    codeHash: v.string(),
+    clientId: v.string(),
+    userId: v.id("users"),
+    redirectUri: v.string(),
+    codeChallenge: v.string(), // PKCE S256
+    scope: v.optional(v.string()),
+    resource: v.optional(v.string()),
+    expiresAt: v.number(),
+  }).index("by_hash", ["codeHash"]),
 
   // ── Prepaid balance ──
   // Verified on-chain USDC transfers into the platform wallet. One row per tx.
