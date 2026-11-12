@@ -83,8 +83,8 @@ export const register = httpAction(async (ctx, request) => {
   if (!uris.every((u) => typeof u === "string" && validRedirectUri(u))) {
     return oauthError("invalid_redirect_uri", "Redirect URIs must be https, or http on localhost");
   }
-  const method = body.token_endpoint_auth_method ?? "none";
-  if (method !== "none") return oauthError("invalid_client_metadata", "Only public clients (token_endpoint_auth_method: none) are supported");
+  // Every client is registered as public (PKCE, no secret), whatever it asked
+  // for; RFC 7591 lets the server decide, and the response says "none".
   const clientName = String(body.client_name || "An MCP client").slice(0, 80);
   const clientId = "rico_client_" + randomToken(16);
   const now = Date.now();
@@ -172,7 +172,13 @@ export const token = httpAction(async (ctx, request) => {
     return oauthError("invalid_request", "Unreadable body");
   }
   const grant = params.get("grant_type");
-  const clientId = params.get("client_id") || "";
+  // Clients that think they hold a secret send client_id in HTTP Basic auth.
+  // There is no secret to check (public clients), but the client_id still counts.
+  let clientId = params.get("client_id") || "";
+  const basic = /^Basic\s+(.+)$/i.exec(request.headers.get("Authorization") || "");
+  if (!clientId && basic) {
+    try { clientId = decodeURIComponent(atob(basic[1]).split(":")[0]); } catch { /* ignore */ }
+  }
 
   if (grant === "authorization_code") {
     const code = params.get("code"), verifier = params.get("code_verifier"), redirectUri = params.get("redirect_uri");

@@ -111,14 +111,20 @@ async function readJson(req) {
  * metadata, which is what makes clients offer to connect.
  */
 export async function handleMcpRequest(req, res, { maxWaitSeconds } = {}) {
-  if (req.method !== "POST") {
-    return rpcError(res, 405, "Method not allowed. This server is stateless: use POST.", { Allow: "POST" });
-  }
-
   // Browsers send an Origin header; server-side MCP clients do not. Refusing
   // unknown origins stops a web page from driving this endpoint from a
   // visitor's browser (DNS rebinding).
   if (!originAllowed(req.headers.origin)) return rpcError(res, 403, "Origin not allowed");
+
+  // Check the credential before anything else, whatever the method, so a
+  // client probing the endpoint always learns that it should sign in.
+  const apiKey = apiKeyFrom(req);
+  if (!apiKey) return unauthorized(res, "Sign in to RICO to use this server");
+  if (!(await credentialValid(apiKey))) return unauthorized(res, "The access token is invalid or has expired");
+
+  if (req.method !== "POST") {
+    return rpcError(res, 405, "Method not allowed. This server is stateless: use POST.", { Allow: "POST" });
+  }
 
   let body;
   try {
@@ -126,10 +132,6 @@ export async function handleMcpRequest(req, res, { maxWaitSeconds } = {}) {
   } catch {
     return send(res, 400, { jsonrpc: "2.0", error: { code: -32700, message: "Parse error" }, id: null });
   }
-
-  const apiKey = apiKeyFrom(req);
-  if (!apiKey) return unauthorized(res, "Sign in to RICO to use this server");
-  if (!(await credentialValid(apiKey))) return unauthorized(res, "The access token is invalid or has expired");
 
   const server = createRicoServer({ apiKey, maxWaitSeconds });
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

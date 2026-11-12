@@ -715,6 +715,12 @@ function WalletView(){
       {funds.summary?.withdrawals?.slice(0,3).map((w:any)=><div key={w._id} style={{fontSize:11,color:"#666",marginTop:6,fontFamily:"monospace"}}>↗ ${w.amount.toFixed(2)} · {w.status==="failed"?"failed, returned to balance":w.status==="review"?"being checked":w.status}{w.txHash?<> · <a style={{color:"#0052ff"}} href={`https://basescan.org/tx/${w.txHash}`} target="_blank" rel="noreferrer">tx</a></>:null}</div>)}
     </div>
 
+    <div style={{background:"rgba(0,180,255,0.03)",border:"1px solid rgba(0,180,255,0.15)",borderRadius:16,padding:20,marginTop:12}}>
+      <div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🤖 Connect Claude</div>
+      <div style={{fontSize:12,color:"#888",marginTop:6,lineHeight:1.6}}>In Claude, open <b style={{color:"#ccc"}}>Settings → Connectors → Add custom connector</b>, paste this URL and click <b style={{color:"#ccc"}}>Connect</b>. You will come back here to approve. No API key needed.</div>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginTop:10}}><div style={{flex:1,fontFamily:"monospace",fontSize:12,color:"#fff",padding:"8px 10px",borderRadius:8,background:"rgba(0,0,0,0.3)",userSelect:"all",wordBreak:"break-all"}}>{`${window.location.origin}/mcp`}</div><button style={{...S.bidAccBtn,fontSize:11,padding:"8px 12px",minHeight:34}} onClick={()=>{navigator.clipboard?.writeText(`${window.location.origin}/mcp`).catch(()=>{})}}>Copy</button></div>
+    </div>
+
     {apps.length>0&&<div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:12}}>
       <div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🔗 Connected apps</div>
       <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>Apps you allowed to act for you and spend this balance.</div>
@@ -723,12 +729,11 @@ function WalletView(){
 
     <div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🔑 API keys</div><button style={{...S.bidAccBtn,fontSize:11,padding:"6px 12px",minHeight:30}} disabled={!!busy} onClick={doNewKey}>＋ New key</button></div>
-      <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>Lets an AI agent, the CLI or the Claude connector post and manage tasks as you, spending this balance. Treat a key like a password.</div>
+      <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>For agents, the CLI and the Python SDK. A key can post and manage tasks as you, spending this balance. Treat it like a password.</div>
       {newKey&&<div style={{marginTop:10,padding:12,borderRadius:10,background:"rgba(255,208,0,0.05)",border:"1px solid rgba(255,208,0,0.2)"}}>
         <div style={{fontSize:11,color:"#ffd000",marginBottom:6}}>Copy this key now. It will not be shown again.</div>
         <div style={{fontFamily:"monospace",fontSize:11,color:"#fff",wordBreak:"break-all",userSelect:"all"}}>{newKey}</div>
-        <div style={{fontSize:11,color:"#666",marginTop:8}}>Claude connector URL:</div>
-        <div style={{fontFamily:"monospace",fontSize:11,color:"#fff",wordBreak:"break-all",userSelect:"all"}}>{`${window.location.origin}/mcp?key=${newKey}`}</div>
+        <div style={{fontSize:11,color:"#666",marginTop:8}}>Use it as <span style={{fontFamily:"monospace",color:"#aaa"}}>RICO_API_KEY</span> for the CLI, the Python SDK or a local MCP server. Claude does not need a key: see "Connect Claude" above.</div>
         <button style={{background:"none",border:"none",color:"#666",fontSize:11,padding:0,marginTop:8,cursor:"pointer"}} onClick={()=>setNewKey(null)}>Done</button>
       </div>}
       {keys.map((k:any)=><div key={k._id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.03)",marginTop:8,fontSize:12,color:"#888"}}><span>{k.label} <span style={{fontFamily:"monospace",color:"#555"}}>rico_…{k.hint}</span></span><button style={{background:"none",border:"none",color:"#ff4757",fontSize:11,cursor:"pointer"}} onClick={()=>{if(confirm(`Revoke "${k.label}"? Anything using it stops working.`))act("key",()=>revokeKey(k._id))}}>Revoke</button></div>)}
