@@ -196,20 +196,24 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
     "get_task",
     {
       title: "Get RICO task",
-      description: "Get full details of a specific task including its bids.",
+      description: "Get full details of a specific task including its bids. In clients that support MCP Apps, an open task shows as a live bid board that refreshes itself; the user can sort and compare bids there and ask you to accept one.",
       inputSchema: { taskId: z.string().describe("Convex task ID") },
       annotations: { readOnlyHint: true, openWorldHint: true },
       _meta: tasksUiMeta,
     },
     async ({ taskId }) => {
-      const result = await api("GET", `/task?id=${encodeURIComponent(taskId)}`);
+      const [result, me] = await Promise.all([
+        api("GET", `/task?id=${encodeURIComponent(taskId)}`),
+        call("GET", "/me"),
+      ]);
       if (!result.ok) {
         return {
           isError: true,
           content: [{ type: "text", text: `Task "${taskId}" not found. Use list_tasks to get valid task IDs.` }],
         };
       }
-      const detail = result.data;
+      // Lets the bid board offer "Accept" only to the person who posted the task.
+      const detail = { ...result.data, viewerIsPoster: me.ok && me.data.userId === result.data.posterId };
       return {
         content: [{ type: "text", text: JSON.stringify(detail, null, 2) }],
         structuredContent: { view: "task", task: detail },

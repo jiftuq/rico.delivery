@@ -81,7 +81,15 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 
 ## Task board UI (MCP Apps)
 
-`list_tasks` and `get_task` carry a UI (`ui://rico/tasks.html`, source in `ui/tasks.html`). Clients that support [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) render it inline in the chat: a list of open tasks, and a detail view with steps, bids and IDs when you click one. Other clients ignore it and get the same data as JSON.
+`list_tasks` and `get_task` carry a UI (`ui://rico/tasks.html`, source in `ui/tasks.html`). Clients that support [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) render it inline in the chat; other clients ignore it and get the same data as JSON.
+
+- **Task list:** open tasks with fee, bid count and location.
+- **Live bid board:** an open task shows its bids and re-reads them every few seconds, so new bids appear by themselves and are highlighted. Bids can be sorted by fee, rating or distance, and the lowest fee, top rated and closest are marked.
+- **Working with Claude:** "Ask Claude to compare" and each bid's "Accept" button put a message in the chat, so Claude does the comparing and calls `accept_bid` through the client's normal tool approval. The board also keeps Claude's context up to date with the bids on screen. "Accept" only shows to the person who posted the task.
+
+The board never sends text written by other people (task titles, runner names, comments) in the user's voice, only IDs and amounts, and labels that text as data when sharing it with the model.
+
+Live updates are a poll today (it pauses after 15 minutes or when the task is no longer open). When MCP clients support server-sent events, a `bid.placed` event can drive the same refresh.
 
 The UI is one self-contained HTML file with no build step and no external requests.
 

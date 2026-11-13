@@ -14,6 +14,8 @@ sample tasks rather than live data, since production has almost none yet.
 | https://rico.delivery/listing/2-task-with-bids-light.png | Show me the menu photo task at Chez Léon and its bids |
 | https://rico.delivery/listing/3-two-runner-move-dark.png | How is my couch move going? Show me the task |
 | https://rico.delivery/listing/4-open-tasks-dark.png | What tasks are open on RICO right now? |
+| https://rico.delivery/listing/5-live-bid-board-light.png | Show me the bids on my menu photo task |
+| https://rico.delivery/listing/6-live-bid-board-dark.png | Which bid should I accept for the menu photos? |
 
 ## Listing details
 
