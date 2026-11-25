@@ -90,20 +90,29 @@ export function useGPS() {
   return loc;
 }
 
+// Task data comes back as the caller may see it: the poster and accepted
+// runners get exact addresses and positions, everyone else the area only.
+// So these pass the session token whenever there is one.
+
 export function useOpenTasks() {
-  return useQuery(api.tasks.listOpen) ?? [];
+  const token = useToken();
+  return useQuery(api.tasks.listOpen, token ? { token } : {}) ?? [];
 }
 
-export function useActiveTasks(userId: Id<"users"> | null) {
-  return useQuery(api.tasks.getActive, userId ? { userId } : "skip") ?? [];
+/** The signed-in user's own tasks that are still going. */
+export function useActiveTasks() {
+  const token = useToken();
+  return useQuery(api.tasks.getActive, token ? { token } : "skip") ?? [];
 }
 
 export function useTask(taskId: Id<"tasks"> | null) {
-  return useQuery(api.tasks.getTask, taskId ? { taskId } : "skip");
+  const token = useToken();
+  return useQuery(api.tasks.getTask, taskId ? { taskId, ...(token ? { token } : {}) } : "skip");
 }
 
 export function useBids(taskId: Id<"tasks"> | null) {
-  return useQuery(api.tasks.getBids, taskId ? { taskId } : "skip") ?? [];
+  const token = useToken();
+  return useQuery(api.tasks.getBids, taskId ? { taskId, ...(token ? { token } : {}) } : "skip") ?? [];
 }
 
 /** Apps connected through "Connect" (OAuth), e.g. Claude. */
@@ -132,12 +141,16 @@ export function useProfile(userId: Id<"users"> | null) {
   return useQuery(api.users.getProfile, userId ? { userId } : "skip");
 }
 
-export function useCourierHistory(courierId: Id<"users"> | null) {
-  return useQuery(api.tasks.getCourierHistory, courierId ? { courierId } : "skip") ?? [];
+/** The signed-in user's finished jobs as a runner. */
+export function useCourierHistory() {
+  const token = useToken();
+  return useQuery(api.tasks.getCourierHistory, token ? { token } : "skip") ?? [];
 }
 
-export function usePosterHistory(posterId: Id<"users"> | null) {
-  return useQuery(api.tasks.getPosterHistory, posterId ? { posterId } : "skip") ?? [];
+/** The signed-in user's finished tasks as a poster. */
+export function usePosterHistory() {
+  const token = useToken();
+  return useQuery(api.tasks.getPosterHistory, token ? { token } : "skip") ?? [];
 }
 
 export function useStats() {
@@ -145,12 +158,39 @@ export function useStats() {
 }
 
 export function useTaskRunners(taskId: Id<"tasks"> | null) {
-  return useQuery(api.tasks.getTaskRunners, taskId ? { taskId } : "skip") ?? [];
+  const token = useToken();
+  return useQuery(api.tasks.getTaskRunners, taskId ? { taskId, ...(token ? { token } : {}) } : "skip") ?? [];
 }
 
-// Proof files
+// Proof files: only the poster and the runners on the task get them.
 export function useProofFiles(taskId: Id<"tasks"> | null) {
-  return useQuery(api.proofs.getProofFiles, taskId ? { taskId } : "skip") ?? [];
+  const token = useToken();
+  return useQuery(api.proofs.getProofFiles, taskId && token ? { taskId, token } : "skip") ?? [];
+}
+
+/**
+ * Re-encode a photo in the browser so the uploaded file carries no metadata
+ * (phones store the GPS position and device in it). Very large photos are
+ * scaled to 4096 px on the long side. Videos and formats the browser can't
+ * decode are uploaded unchanged.
+ */
+async function withoutMetadata(file: File): Promise<File> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap !== "function") return file;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+    const scale = Math.min(1, 4096 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const type = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.9));
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.[a-z0-9]+$/i, "") + (type === "image/png" ? ".png" : ".jpg"), { type });
+  } catch {
+    return file;
+  }
 }
 
 export function useProofUpload() {
@@ -165,6 +205,7 @@ export function useProofUpload() {
     caption?: string,
   ) => {
     if (!token) throw new Error("Sign in first");
+    file = await withoutMetadata(file);
     const uploadUrl = await generateUrl({ token });
     const res = await fetch(uploadUrl, {
       method: "POST",

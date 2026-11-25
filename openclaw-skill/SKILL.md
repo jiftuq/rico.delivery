@@ -105,7 +105,7 @@ Every task is a sequence of steps. Each step has:
 1. Always define `steps` array — never use flat fields alone
 2. Every step needs a `proofType`
 3. Set `maxRunners` > 1 for multi-person tasks
-4. Escrow = suggestedFee × maxRunners
+4. Escrow = suggestedFee × maxRunners; `suggestedFee` must be at least 0.50 USDC
 5. Include `locationAddr` for any location-specific step
 6. User needs an API key and a prepaid USDC balance from rico.delivery under Wallet
 

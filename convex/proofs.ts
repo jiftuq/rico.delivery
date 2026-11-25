@@ -1,6 +1,13 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, QueryCtx } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
-import { requireUser } from "./lib/auth";
+import { Doc, Id } from "./_generated/dataModel";
+import { requireUser, userForToken } from "./lib/auth";
+import { viewerOf } from "./lib/privacy";
+
+// Proof photos, videos and notes from runners. Only the people on the task
+// (its poster and accepted runners) can read them.
+
+const MAX_PROOFS_PER_TASK = 200;
 
 // Generate a URL for file upload (Convex storage)
 export const generateUploadUrl = mutation({
@@ -30,6 +37,12 @@ export const saveProofFile = mutation({
     const assigned = task.courierId === user._id || (await ctx.db.query("taskRunners")
       .withIndex("by_task_runner", (q) => q.eq("taskId", args.taskId).eq("runnerId", user._id)).first()) !== null;
     if (!assigned) throw new ConvexError("Only a runner on this task can upload proof");
+    if (args.storageId.length > 100) throw new ConvexError("Invalid file");
+    if (args.fileType.length > 100) throw new ConvexError("File type is too long");
+    if ((args.fileName?.length ?? 0) > 200) throw new ConvexError("File name is too long (max 200 characters)");
+    if ((args.caption?.length ?? 0) > 500) throw new ConvexError("Caption is too long (max 500 characters)");
+    const existing = await ctx.db.query("proofFiles").withIndex("by_task", (q) => q.eq("taskId", args.taskId)).take(MAX_PROOFS_PER_TASK);
+    if (existing.length >= MAX_PROOFS_PER_TASK) throw new ConvexError(`A task can have at most ${MAX_PROOFS_PER_TASK} proof files`);
     return await ctx.db.insert("proofFiles", {
       ...args,
       runnerId: user._id,
@@ -38,39 +51,26 @@ export const saveProofFile = mutation({
   },
 });
 
+/** Proof files with download links, for the people on the task only. */
+async function forParticipants(ctx: QueryCtx, taskId: Id<"tasks">, token: string | undefined, files: () => Promise<Doc<"proofFiles">[]>) {
+  const task = await ctx.db.get(taskId);
+  const user = token ? await userForToken(ctx, token) : null;
+  if (!task || (await viewerOf(ctx, task, user?._id)) === "public") return [];
+  return await Promise.all((await files()).map(async (f) => ({ ...f, url: await ctx.storage.getUrl(f.storageId) })));
+}
+
 // Get all proof files for a task
 export const getProofFiles = query({
-  args: { taskId: v.id("tasks") },
-  handler: async (ctx, { taskId }) => {
-    const files = await ctx.db
-      .query("proofFiles")
-      .withIndex("by_task", (q) => q.eq("taskId", taskId))
-      .collect();
-    // Attach download URLs
-    return await Promise.all(
-      files.map(async (f) => ({
-        ...f,
-        url: await ctx.storage.getUrl(f.storageId),
-      }))
-    );
-  },
+  args: { taskId: v.id("tasks"), token: v.optional(v.string()) },
+  handler: async (ctx, { taskId, token }) =>
+    forParticipants(ctx, taskId, token, () =>
+      ctx.db.query("proofFiles").withIndex("by_task", (q) => q.eq("taskId", taskId)).take(MAX_PROOFS_PER_TASK)),
 });
 
 // Get proof files for a specific step
 export const getStepProofs = query({
-  args: { taskId: v.id("tasks"), stepOrder: v.number() },
-  handler: async (ctx, { taskId, stepOrder }) => {
-    const files = await ctx.db
-      .query("proofFiles")
-      .withIndex("by_task_step", (q) =>
-        q.eq("taskId", taskId).eq("stepOrder", stepOrder)
-      )
-      .collect();
-    return await Promise.all(
-      files.map(async (f) => ({
-        ...f,
-        url: await ctx.storage.getUrl(f.storageId),
-      }))
-    );
-  },
+  args: { taskId: v.id("tasks"), stepOrder: v.number(), token: v.optional(v.string()) },
+  handler: async (ctx, { taskId, stepOrder, token }) =>
+    forParticipants(ctx, taskId, token, () =>
+      ctx.db.query("proofFiles").withIndex("by_task_step", (q) => q.eq("taskId", taskId).eq("stepOrder", stepOrder)).take(MAX_PROOFS_PER_TASK)),
 });

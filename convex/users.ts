@@ -3,10 +3,11 @@ import { v } from "convex/values";
 import { requireUser } from "./lib/auth";
 
 // Accounts are created by signing in with a wallet (see auth.ts).
-// These are the public, read-only views of a user: no balance.
+// These are the public, read-only views of a user: no balance and no
+// position (lastLat/lastLng is where they last bid or worked from).
 
 function publicUser(user: any) {
-  const { balance: _b, balanceMicro: _m, ...rest } = user;
+  const { balance: _b, balanceMicro: _m, lastLat: _la, lastLng: _ln, ...rest } = user;
   return rest;
 }
 

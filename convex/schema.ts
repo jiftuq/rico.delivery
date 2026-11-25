@@ -266,6 +266,13 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  // Running totals for the public stats (see lib/stats.ts), so no query
+  // ever has to read every task.
+  stats: defineTable({
+    key: v.string(),
+    value: v.number(),
+  }).index("by_key", ["key"]),
+
   ratings: defineTable({
     taskId: v.id("tasks"),
     raterId: v.id("users"),

@@ -89,7 +89,7 @@ Fee: $5-15
 5. Be specific in step actions — "Pick up 2 large pizzas from Mario's" not just "pick up food"
 6. Include locationAddr on steps that require going somewhere specific
 7. If a call fails with 401, tell the user to create an API key at rico.delivery under Wallet. If it fails with 402, tell them to top up their balance there
-8. Escrow = suggestedFee × maxRunners (explain this to users)
+8. Escrow = suggestedFee × maxRunners (explain this to users); suggestedFee must be at least 0.50 USDC
 9. Suggest reasonable fees based on effort, distance, and time required
 10. Always confirm the workflow with the user before posting
 

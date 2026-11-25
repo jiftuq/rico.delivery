@@ -7,6 +7,8 @@ import { Id } from "../_generated/dataModel";
 export const MICRO = 1_000_000;
 export const MAX_AMOUNT_USDC = 100_000;
 export const FEE_PERCENT = 7;
+/** Smallest fee a task may offer each runner, so posting is never free. */
+export const MIN_FEE_MICRO = 500_000; // 0.50 USDC
 /** Payouts below this stay in the balance instead of going on-chain. */
 export const MIN_WITHDRAWAL_MICRO = 100_000; // 0.10 USDC
 

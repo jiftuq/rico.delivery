@@ -2,7 +2,7 @@
 // Keep it in step with the code: every claim below describes what the app
 // actually stores or sends. Update LAST_UPDATED when it changes.
 
-const LAST_UPDATED = "12 November 2026";
+const LAST_UPDATED = "25 November 2026";
 const CONTACT_URL = "https://github.com/jiftuq/rico.delivery/issues";
 
 const wrap: React.CSSProperties = { maxWidth: 720, margin: "0 auto", padding: "24px 16px 120px", fontFamily: "'Outfit',sans-serif", color: "#aaa", fontSize: 14, lineHeight: 1.65 };
@@ -24,7 +24,7 @@ export default function PrivacyView() {
       <li><b>Tasks you post</b>: title, description, steps, addresses and map coordinates, fee, and status.</li>
       <li><b>Bids you place</b>: your fee, comment, estimated trip distance, and the location you bid from.</li>
       <li><b>Your location while working.</b> If you are the runner on a task in progress and allow it, your browser sends your position about every 5 seconds so the poster can follow the delivery. Your last known position is stored on your account.</li>
-      <li><b>Proof you submit</b>: photos, videos, text and GPS proof for task steps.</li>
+      <li><b>Proof you submit</b>: photos, videos, text and GPS proof for task steps. Photos are re-encoded in your browser before upload, which removes the location and device details phones store inside image files. Videos are uploaded as they are.</li>
       <li><b>Messages</b> in a task's chat, and <b>ratings and reviews</b>.</li>
       <li><b>Balance and payments</b>: your prepaid balance, a ledger of every change to it, and the blockchain transaction hashes of your deposits and withdrawals.</li>
       <li><b>Sign-in records</b>: sessions, API keys and apps you connect (such as Claude). We store only a one-way hash of each token, plus a label and the last four characters of API keys so you can tell them apart.</li>
@@ -34,14 +34,15 @@ export default function PrivacyView() {
 
     <h2 style={h2}>Who can see it</h2>
     <ul>
-      <li><b>Everyone</b>, including people who are not signed in, can see open tasks (with their addresses, steps and fee), the display name of the poster, bids on a task (including the bidder's display name, rating, comment, fee and the location they bid from), and public profiles with ratings and reviews. Set a task's privacy zone if you do not want its exact location shown.</li>
-      <li><b>The poster and the runners on a task</b> can see its chat and the runner's live location.</li>
-      <li><b>Only you</b> (and apps you connect) can see your balance, ledger, API keys and connected apps.</li>
+      <li><b>Everyone</b>, including people who are not signed in, can see open tasks with their title, description, steps, fee and the poster's display name. Addresses are shown without the house number, and map positions are rounded to the task's privacy zone (100 m by default, up to 2 km), so the exact place stays hidden. Everyone can also see bids (the bidder's display name, rating, comment, fee and distance, but not where they are) and public profiles (display name, wallet address, rating, number of jobs and reviews).</li>
+      <li><b>The poster of a task</b> also sees roughly where each bid was placed from, to within about a kilometre.</li>
+      <li><b>The poster and the accepted runners</b> see the exact addresses and positions, the person to meet or check, the runner's live location during the job, the chat, and the proof photos, videos and notes.</li>
+      <li><b>Only you</b> (and apps you connect) can see your balance, its history, your active tasks and your past jobs. Only you, signed in with your wallet, can see your API keys and connected apps.</li>
       <li><b>The public blockchain.</b> Deposits and withdrawals are USDC transfers on Base. They are permanent and visible to anyone, and link your wallet address to RICO's deposit address.</li>
     </ul>
 
     <h2 style={h2}>Connected apps and AI agents</h2>
-    <p>When you connect an app such as Claude, or give an agent an API key, it can act as you: read your tasks, bids and balance, post tasks and accept bids (spending your balance), confirm deliveries (which pays the runner), cancel your open tasks and place bids. It cannot deposit, withdraw, or spend more than your balance. What you send to that app, and what it does with RICO data, is covered by that app's own privacy policy. You can disconnect apps and revoke API keys at any time under Wallet.</p>
+    <p>When you connect an app such as Claude, or give an agent an API key, it can act as you: read your tasks, bids and balance, post tasks and accept bids (spending your balance), confirm deliveries (which pays the runner), cancel your open tasks and place bids. It cannot withdraw (money only leaves RICO from this website, to your own wallet), touch your wallet, spend more than your balance, or see or change your API keys and other connected apps. What you send to that app, and what it does with RICO data, is covered by that app's own privacy policy. You can disconnect apps and revoke API keys at any time under Wallet.</p>
 
     <h2 style={h2}>Other services we use</h2>
     <ul>

@@ -14,6 +14,8 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_money from "../lib/money.js";
+import type * as lib_privacy from "../lib/privacy.js";
+import type * as lib_stats from "../lib/stats.js";
 import type * as oauth from "../oauth.js";
 import type * as payments from "../payments.js";
 import type * as proofs from "../proofs.js";
@@ -35,6 +37,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/auth": typeof lib_auth;
   "lib/money": typeof lib_money;
+  "lib/privacy": typeof lib_privacy;
+  "lib/stats": typeof lib_stats;
   oauth: typeof oauth;
   payments: typeof payments;
   proofs: typeof proofs;

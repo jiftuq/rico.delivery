@@ -2,7 +2,7 @@ import { internalMutation, internalQuery, mutation, query, MutationCtx } from ".
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { requireUser, userForToken } from "./lib/auth";
+import { requireSession, userForToken } from "./lib/auth";
 import { MIN_WITHDRAWAL_MICRO, credit, debit, fmt, fromMicro, toMicro } from "./lib/money";
 
 // Prepaid balances. Money comes in only through a verified on-chain deposit
@@ -46,7 +46,9 @@ export async function enqueueWithdrawal(ctx: MutationCtx, userId: Id<"users">, a
 export const requestWithdrawal = mutation({
   args: { token: v.string(), amount: v.number() },
   handler: async (ctx, { token, amount }) => {
-    const user = await requireUser(ctx, token);
+    // Only the person holding the wallet, signed in on rico.delivery: never an
+    // API key or a connected app, even though the money only goes to that wallet.
+    const user = await requireSession(ctx, token, "Withdrawing");
     const amountMicro = toMicro(amount, "Withdrawal");
     if (amountMicro < MIN_WITHDRAWAL_MICRO) throw new ConvexError(`Minimum withdrawal is ${fmt(MIN_WITHDRAWAL_MICRO)} USDC`);
     const id = await enqueueWithdrawal(ctx, user._id, amountMicro, "user");
@@ -56,7 +58,8 @@ export const requestWithdrawal = mutation({
 
 // ── Internal: used by the payment actions ──
 
-export const sessionUser = internalQuery({
+/** The user behind any credential (session, API key or app token). */
+export const tokenUser = internalQuery({
   args: { token: v.string() },
   handler: async (ctx, { token }) => userForToken(ctx, token),
 });

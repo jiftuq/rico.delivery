@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 import { createPublicClient, getAddress, http, isAddress } from "viem";
 import { base } from "viem/chains";
-import { API_KEY_PREFIX, SESSION_TTL_MS, hashToken, requireUser, userForToken } from "./lib/auth";
+import { API_KEY_PREFIX, SESSION_TTL_MS, hashToken, requireSession, sessionUser, userForToken } from "./lib/auth";
 import { fromMicro } from "./lib/money";
 
 // Sign-in works by proving control of a wallet: the app asks for a one-time
@@ -121,10 +121,12 @@ export const createApiKey = action({
   },
 });
 
+// Listing and revoking keys needs the wallet-signed session: an API key or a
+// connected app must not be able to see or remove the account's other keys.
 export const listApiKeys = query({
   args: { token: v.optional(v.string()) },
   handler: async (ctx, { token }) => {
-    const user = await userForToken(ctx, token);
+    const user = await sessionUser(ctx, token);
     if (!user) return [];
     const rows = await ctx.db.query("authTokens").withIndex("by_user", (q) => q.eq("userId", user._id)).collect();
     return rows
@@ -136,7 +138,7 @@ export const listApiKeys = query({
 export const revokeApiKey = mutation({
   args: { token: v.string(), keyId: v.id("authTokens") },
   handler: async (ctx, { token, keyId }) => {
-    const user = await requireUser(ctx, token);
+    const user = await requireSession(ctx, token, "Revoking an API key");
     const row = await ctx.db.get(keyId);
     if (!row || row.userId !== user._id || row.kind !== "apiKey") throw new ConvexError("Key not found");
     await ctx.db.delete(keyId);

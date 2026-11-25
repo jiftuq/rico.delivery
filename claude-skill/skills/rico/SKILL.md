@@ -142,7 +142,7 @@ delivery, food, grocery, moving, errand, social, info, verification, custom
 1. Always use `steps` array to define the workflow — never use flat fields alone
 2. Every step should have a `proofType` unless it's a transit step
 3. Set `maxRunners` > 1 for tasks that need multiple people (moving, events)
-4. Escrow = suggestedFee × maxRunners
+4. Escrow = suggestedFee × maxRunners; `suggestedFee` must be at least 0.50 USDC
 5. Include `requirements` when the runner needs specific equipment
 6. Include `locationAddr` on any step that requires going to a specific place
 7. The user needs a RICO API key and a prepaid USDC balance — both from rico.delivery under Wallet. If posting fails with "Insufficient balance", tell them to top up there

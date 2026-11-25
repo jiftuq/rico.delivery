@@ -1,7 +1,7 @@
 import { action, httpAction, internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
-import { hashToken, userForToken } from "./lib/auth";
+import { hashToken, sessionUser as sessionUserFor } from "./lib/auth";
 
 // A small OAuth 2.0 authorization server, so MCP clients such as Claude can
 // connect a RICO account with a "Connect" button instead of a pasted key.
@@ -108,6 +108,24 @@ export const storeClient = internalMutation({
 // ── Authorization (called by the consent page on rico.delivery) ──
 
 /** What the consent page shows, and whether the request is valid at all. */
+// Anyone can register an app under any name (Claude's sign-in depends on
+// that), so the name proves nothing. What identifies an app is where it sends
+// the user back to: only these hosts are shown as verified.
+const TRUSTED_HOSTS = ["claude.ai", "claude.com",
+  ...(process.env.OAUTH_TRUSTED_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)];
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+/** Names an unverified app has no business using. */
+const IMPERSONATION = /claude|anthropic|rico/i;
+
+export type ClientTrust = "verified" | "local" | "unverified";
+
+function trustOf(redirectUri: string): ClientTrust {
+  const { protocol, hostname } = new URL(redirectUri);
+  if (protocol === "https:" && TRUSTED_HOSTS.includes(hostname.toLowerCase())) return "verified";
+  if (LOOPBACK_HOSTS.includes(hostname)) return "local"; // an app on the user's own computer
+  return "unverified";
+}
+
 export const describeClient = query({
   args: { clientId: v.string(), redirectUri: v.string() },
   handler: async (ctx, { clientId, redirectUri }) => {
@@ -115,7 +133,15 @@ export const describeClient = query({
     if (!client) return { ok: false as const, reason: "Unknown application. Start the connection again from the app." };
     // Never redirect anywhere the client did not register: that would leak the code.
     if (!redirectAllowed(client.redirectUris, redirectUri)) return { ok: false as const, reason: "This app asked to return to an address it did not register." };
-    return { ok: true as const, clientName: client.clientName, redirectHost: new URL(redirectUri).host };
+    const trust = trustOf(redirectUri);
+    return {
+      ok: true as const,
+      clientName: client.clientName,
+      redirectHost: new URL(redirectUri).host,
+      trust,
+      // e.g. "Claude" that doesn't return to claude.ai
+      impersonating: trust === "unverified" && IMPERSONATION.test(client.clientName),
+    };
   },
 });
 
@@ -249,10 +275,12 @@ async function issue(ctx: any, userId: any, clientId: string, accessHash: string
 
 // ── Connected apps, for the Wallet screen ──
 
+// Connected apps are managed from rico.delivery with the wallet-signed
+// session only: one app must not be able to see or disconnect the others.
 export const listConnections = query({
   args: { token: v.optional(v.string()) },
   handler: async (ctx, { token }) => {
-    const user = await userForToken(ctx, token);
+    const user = await sessionUserFor(ctx, token);
     if (!user) return [];
     const rows = await ctx.db.query("authTokens").withIndex("by_user", (q) => q.eq("userId", user._id)).collect();
     const byClient = new Map<string, { clientId: string; label: string; since: number }>();
@@ -277,14 +305,15 @@ export const disconnectApp = action({
   args: { token: v.string(), clientId: v.string() },
   handler: async (ctx, { token, clientId }) => {
     const user = await ctx.runQuery(internal.oauth.sessionUser, { token });
-    if (!user) throw new ConvexError("Not signed in: missing, invalid or expired token");
+    if (!user) throw new ConvexError("Disconnecting an app needs you to be signed in on rico.delivery with your wallet.");
     await ctx.runMutation(internal.oauth.disconnect, { userId: user._id, clientId });
   },
 });
 
+/** The user behind a wallet-signed web session (not an API key or app token). */
 export const sessionUser = internalQuery({
   args: { token: v.string() },
-  handler: async (ctx, { token }) => userForToken(ctx, token),
+  handler: async (ctx, { token }) => sessionUserFor(ctx, token),
 });
 
 /** Cron: drop expired codes. */

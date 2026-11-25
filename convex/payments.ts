@@ -162,7 +162,7 @@ const topicToAddress = (topic: string) => "0x" + topic.slice(-40).toLowerCase();
 export const claimDeposit = action({
   args: { token: v.string(), txHash: v.string() },
   handler: async (ctx, { token, txHash }): Promise<{ credited: number; alreadyCredited: boolean; balance: number }> => {
-    const user = await ctx.runQuery(internal.wallet.sessionUser, { token });
+    const user = await ctx.runQuery(internal.wallet.tokenUser, { token });
     if (!user) throw new ConvexError("Not signed in: missing, invalid or expired token");
     if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new ConvexError("Invalid transaction hash");
     const treasury = process.env.RECEIVING_WALLET?.toLowerCase();

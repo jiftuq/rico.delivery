@@ -62,12 +62,15 @@ function authed(handler: Handler) {
   });
 }
 
-/** Wrap a public, read-only route. */
-function open(handler: (ctx: ActionCtx, url: URL) => Promise<unknown>) {
+/**
+ * Wrap a public, read-only route. A key is optional: with one, the poster and
+ * the runners on a task get its exact details; without, the public view.
+ */
+function open(handler: (ctx: ActionCtx, url: URL, token?: string) => Promise<unknown>) {
   return httpAction(async (ctx, request) => {
     const origin = request.headers.get("Origin") || undefined;
     try {
-      return json(await handler(ctx, new URL(request.url)), 200, origin);
+      return json(await handler(ctx, new URL(request.url), bearer(request) ?? undefined), 200, origin);
     } catch (e: any) {
       return errorResponse(e, origin);
     }
@@ -114,9 +117,7 @@ const deposit = authed(async (ctx, token, { txHash }) => {
   return await ctx.runAction(api.payments.claimDeposit, { token, txHash });
 });
 
-// ── POST /withdraw ── send balance back to the account's own wallet
-const withdraw = authed(async (ctx, token, { amount }) =>
-  ctx.runMutation(api.wallet.requestWithdrawal, { token, amount }));
+// Withdrawals have no API route: they need a wallet-signed session on rico.delivery.
 
 // ── GET /me ── balance, deposit address, recent activity
 const me = authed(async (ctx, token) => {
@@ -126,16 +127,16 @@ const me = authed(async (ctx, token) => {
 });
 
 // ── GET /tasks ── open tasks
-const listTasks = open(async (ctx) => ({ tasks: await ctx.runQuery(api.tasks.listOpen, {}) }));
+const listTasks = open(async (ctx, _url, token) => ({ tasks: await ctx.runQuery(api.tasks.listOpen, { token }) }));
 
 // ── GET /task?id= ── one task with its bids
-const getTask = open(async (ctx, url) => {
+const getTask = open(async (ctx, url, token) => {
   const taskId = url.searchParams.get("id") as Id<"tasks"> | null;
   if (!taskId) throw new ConvexError("Missing ?id= parameter");
   let task;
-  try { task = await ctx.runQuery(api.tasks.getTask, { taskId }); } catch { task = null; }
+  try { task = await ctx.runQuery(api.tasks.getTask, { taskId, token }); } catch { task = null; }
   if (!task) throw new ConvexError("Task not found");
-  const bids = await ctx.runQuery(api.tasks.getBids, { taskId });
+  const bids = await ctx.runQuery(api.tasks.getBids, { taskId, token });
   return { ...task, bids };
 });
 
@@ -185,9 +186,6 @@ const openapi = httpAction(async (_ctx, request) => {
       "/deposit": { post: { operationId: "claimDeposit", summary: "Credit a confirmed USDC transfer from your wallet",
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["txHash"], properties: { txHash: { type: "string" } } } } } },
         responses: { "200": { description: "Deposit credited" } } } },
-      "/withdraw": { post: { operationId: "withdraw", summary: "Send balance to the account's own wallet",
-        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["amount"], properties: { amount: { type: "number" } } } } } },
-        responses: { "200": { description: "Withdrawal queued" } } } },
       "/health": { get: { operationId: "healthCheck", summary: "Check server status", security: [], responses: { "200": { description: "OK" } } } }
     },
     components: { securitySchemes: { apiKey: { type: "http", scheme: "bearer", description: "RICO API key (rico_...)" } }, schemas: {
@@ -200,7 +198,7 @@ const openapi = httpAction(async (_ctx, request) => {
         title: { type: "string" }, taskType: { type: "string", enum: ["delivery","go-somewhere","interact","gather-info","physical-action","verification"] },
         category: { type: "string" }, details: { type: "string" },
         steps: { type: "array", items: { "$ref": "#/components/schemas/WorkflowStep" }, description: "Workflow steps" },
-        suggestedFee: { type: "number" }, maxRunners: { type: "integer", default: 1 },
+        suggestedFee: { type: "number", minimum: 0.5, description: "Fee per runner in USDC, at least 0.50" }, maxRunners: { type: "integer", default: 1 },
         privacyZone: { type: "integer", default: 100 },
         locationAddr: { type: "string" }, locationLat: { type: "number" }, locationLng: { type: "number" },
         action: { type: "string" }, proofType: { type: "string" },
@@ -250,8 +248,6 @@ const subscribeBids = httpAction(async (ctx, request) => {
               courierName: bid.courierName,
               fee: bid.fee,
               comment: bid.comment,
-              lat: bid.lat,
-              lng: bid.lng,
               tripKm: bid.tripKm,
               courierScore: bid.courierScore,
               courierDeliveries: bid.courierDeliveries,
@@ -580,7 +576,7 @@ http.route({ path: "/task", method: "OPTIONS", handler: corsOptions });
 http.route({ path: "/tasks", method: "GET", handler: listTasks });
 http.route({ path: "/tasks", method: "OPTIONS", handler: corsOptions });
 
-for (const [path, handler] of [["/bid", placeBid], ["/deposit", deposit], ["/withdraw", withdraw]] as const) {
+for (const [path, handler] of [["/bid", placeBid], ["/deposit", deposit]] as const) {
   http.route({ path, method: "POST", handler });
   http.route({ path, method: "OPTIONS", handler: corsOptions });
 }

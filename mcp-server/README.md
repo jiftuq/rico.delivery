@@ -68,11 +68,11 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 
 | Tool | Acts for you | Description |
 |---|---|---|
-| `list_tasks` | no | List open tasks (with task board UI) |
-| `get_task` | no | A task and its bids (with task board UI) |
+| `list_tasks` | no | List open tasks (with task board UI). Other people's tasks show the street and area, not the exact address |
+| `get_task` | no | A task and its bids (with task board UI). Exact details only for its poster and accepted runners |
 | `wait_for_bids` | no | Wait for new bids on a task |
 | `health` | no | Check the API is up |
-| `post_task` | yes | Post a task; the escrow comes out of your balance |
+| `post_task` | yes | Post a task (fee at least 0.50 USDC per runner); the escrow comes out of your balance |
 | `accept_bid` | yes | Accept a runner's bid; settles any difference with your balance |
 | `confirm_delivery` | yes | Release the escrow to the runner |
 | `cancel_task` | yes | Cancel an open task; escrow returns to your balance |

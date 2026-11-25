@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
+import { Component, useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
+import type { ReactNode } from "react";
 import { Id } from "../convex/_generated/dataModel";
 import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions, useFunds, useApiKeys, useConnectedApps } from "./hooks/useRico";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
@@ -8,6 +9,28 @@ import { connectWallet, switchWallet } from "./lib/wallet";
 import { ensureSession, endSession, errMsg } from "./lib/session";
 import ConsentView from "./Consent";
 import PrivacyView from "./Privacy";
+
+/**
+ * Keeps one failing query or component from blanking the whole site: the
+ * view shows a short message and a retry button instead, and the header and
+ * navigation keep working. Resets when the user switches view.
+ */
+class ViewBoundary extends Component<{ resetKey: string; children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) { console.error("View crashed:", error); }
+  componentDidUpdate(prev: { resetKey: string }) {
+    if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <div role="alert" style={{maxWidth:420,margin:"60px auto",padding:24,textAlign:"center",fontFamily:"'Outfit',sans-serif",color:"#aaa"}}>
+      <div style={{fontSize:18,fontWeight:700,color:"#fff"}}>This page couldn't load</div>
+      <div style={{fontSize:13,marginTop:8,lineHeight:1.5}}>Something went wrong on our side. The rest of RICO still works: try again, or pick another tab below.</div>
+      <button style={{marginTop:16,padding:"10px 18px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"none",color:"#fff",fontSize:13,cursor:"pointer"}} onClick={()=>this.setState({error:null})}>Try again</button>
+    </div>;
+  }
+}
 
 // Haptic feedback — graceful no-op on unsupported browsers (iOS Safari)
 const hap={
@@ -202,10 +225,6 @@ function RatingModal({name,onRate,onClose}:{name:string;onRate:(s:number,c:strin
 
 function ProfilePopup({profile,onClose}:{profile:any;onClose:()=>void}){
   const t=useLang();
-  const courierHist=useCourierHistory(profile.deliveries>0?profile._id:null);
-  const posterHist=usePosterHistory(profile.tasksPosted>0?profile._id:null);
-  const totalKm=courierHist.reduce((s:number,h:any)=>s+h.tripKm,0);
-  const totalEarned=courierHist.filter((h:any)=>h.status==="completed").reduce((s:number,h:any)=>s+h.acceptedFee,0);
   return <div style={{...S.escBox,marginTop:10}}>
     <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:15,fontWeight:700,color:"#fff"}}>{profile.displayName}</span><button style={{background:"none",border:"none",color:"#555",fontSize:16}} onClick={onClose}>✕</button></div>
     <div style={{display:"flex",gap:10,marginTop:8}}>
@@ -214,22 +233,6 @@ function ProfilePopup({profile,onClose}:{profile:any;onClose:()=>void}){
       <div style={S.pStat}><div style={S.pStatN}>{profile.tasksPosted}</div><div style={S.pStatL}>{t("posted_stat")}</div></div>
     </div>
     {profile.reviews?.slice(0,3).map((r:any,i:number)=><div key={i} style={{padding:"8px 0",borderTop:"1px solid rgba(255,255,255,0.03)",fontSize:12,color:"#888"}}><span style={{color:"#ffd000"}}>{"★".repeat(r.score)}</span> {r.comment} <span style={{color:"#444"}}>— {r.raterName}</span></div>)}
-    {courierHist.length>0&&<div style={{marginTop:10}}>
-      <div style={{fontSize:11,fontWeight:700,color:"#00ff87",marginBottom:6}}>🚴 {t("delivery_history")} ({courierHist.length})</div>
-      <div style={{fontSize:10,color:"#666",marginBottom:6}}>{totalKm.toFixed(1)} {t("km")} · ${totalEarned.toFixed(2)} {t("earned")}</div>
-      {courierHist.slice(0,5).map((h:any)=><div key={h._id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderTop:"1px solid rgba(255,255,255,0.02)",fontSize:11}}>
-        <span style={{color:"#777"}}>{h.tripKm.toFixed(1)} {t("km")}</span>
-        <span style={{color:h.status==="completed"?"#00ff87":"#ff4757",fontFamily:"monospace"}}>${h.acceptedFee.toFixed(2)}</span>
-      </div>)}
-    </div>}
-    {posterHist.length>0&&<div style={{marginTop:10}}>
-      <div style={{fontSize:11,fontWeight:700,color:"#0052ff",marginBottom:6}}>📝 {t("post_history")} ({posterHist.length})</div>
-      {posterHist.slice(0,5).map((h:any)=><div key={h._id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderTop:"1px solid rgba(255,255,255,0.02)",fontSize:11}}>
-        <span style={{color:"#777"}}>{h.title}</span>
-        <span style={{color:h.status==="completed"?"#00ff87":"#ff4757",fontFamily:"monospace"}}>${h.totalEscrowed.toFixed(2)}</span>
-      </div>)}
-    </div>}
-    {courierHist.length===0&&posterHist.length===0&&<div style={{fontSize:11,color:"#333",marginTop:8,textAlign:"center"}}>{t("no_history")}</div>}
   </div>;
 }
 
@@ -453,7 +456,7 @@ function AgentWorkflows(){
 }
 
 function TaskListView({userLoc}:{userLoc:[number,number]|null}){
-  const t=useLang();const openTasks=useOpenTasks();const{walletAddr}=useWalletCtx();const{userId}=useUser(walletAddr);const activeTasks=useActiveTasks(userId);
+  const t=useLang();const openTasks=useOpenTasks();const{walletAddr}=useWalletCtx();const{userId}=useUser(walletAddr);const activeTasks=useActiveTasks();
   const[cat,setCat]=useState("all");const[search,setSearch]=useState("");
   const all=[...activeTasks.filter(tk=>tk.status!=="open"),...openTasks];
   const unique=all.filter((tk,i,a)=>a.findIndex(x=>x._id===tk._id)===i);
@@ -556,7 +559,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
     const missing:string[]=[];
     if(!title)missing.push("Title");
     if(steps.length===0||steps.filter(s=>s.action.trim()).length===0)missing.push("At least one workflow step");
-    if(!fee||parseFloat(fee)<=0)missing.push("Fee per runner");
+    if(!fee||!(parseFloat(fee)>=0.5))missing.push("Fee per runner (at least 0.50 USDC)");
     if(missing.length>0){hap.error();alert("Missing: "+missing.join(", "));return;}
     if(!walletAddr||!token){await connect();return;}
     const filledSteps=steps.filter(s=>s.action.trim());
@@ -650,7 +653,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
 
       {/* Fee + runners + privacy */}
       <div className="dz-form-grid" style={{marginTop:10}}>
-        <div><label style={S.fLbl}>💰 Fee per runner (USDC)</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={fee} onChange={e=>setFee(e.target.value)}/></div>
+        <div><label style={S.fLbl}>💰 Fee per runner (USDC, min 0.50)</label><input style={{...S.fInp,fontSize:14,padding:12}} placeholder="5.00" value={fee} onChange={e=>setFee(e.target.value)}/></div>
         <div><label style={S.fLbl}>👥 Runners needed</label><input type="number" min="1" max="100" style={{...S.fInp,fontSize:14,padding:12}} value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/></div>
         <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={privacyZone} onChange={e=>setPrivacyZone(e.target.value)}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
       </div>
@@ -692,8 +695,8 @@ function WalletView(){
   const doWithdraw=()=>{const n=askAmount(`How much USDC to send back to your wallet? (balance $${funds.balance.toFixed(2)})`);if(n)act("withdraw",()=>funds.withdraw(n))};
   const doClaim=()=>{const tx=prompt("Transaction hash of a USDC transfer you already sent to the RICO deposit address:");if(tx)act("deposit",()=>funds.claimDeposit(tx.trim()))};
   const doNewKey=()=>{const label=prompt("Name for this API key (e.g. Claude)","Claude");if(label)act("key",async()=>{setNewKey((await createKey(label)).key)})};
-  const courierHist=useCourierHistory(user?._id??null);
-  const posterHist=usePosterHistory(user?._id??null);
+  const courierHist=useCourierHistory();
+  const posterHist=usePosterHistory();
   if(!walletAddr)return<div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2><div style={{marginTop:20,textAlign:"center"}}><button style={{...S.postBtn,maxWidth:320,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>🔗 {t("connect_to_use")}</button></div></div>;
   if(!user)return<div style={S.postWrap}><h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("wallet_title")}</h2><div style={{marginTop:20,textAlign:"center"}}><button style={{...S.postBtn,maxWidth:320,background:"linear-gradient(135deg,#0052ff,#0066ff)"}} onClick={connect}>✍️ Sign in with your wallet</button><div style={{fontSize:11,color:"#555",marginTop:10}}>A free signature that proves the wallet is yours. No transaction.</div></div></div>;
   const totalKm=courierHist.reduce((s:number,h:any)=>s+h.tripKm,0);
@@ -729,7 +732,7 @@ function WalletView(){
 
     <div style={{background:"rgba(255,255,255,0.015)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:16,padding:20,marginTop:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:15,fontWeight:600,color:"#fff"}}>🔑 API keys</div><button style={{...S.bidAccBtn,fontSize:11,padding:"6px 12px",minHeight:30}} disabled={!!busy} onClick={doNewKey}>＋ New key</button></div>
-      <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>For agents, the CLI and the Python SDK. A key can post and manage tasks as you, spending this balance. Treat it like a password.</div>
+      <div style={{fontSize:11,color:"#555",marginTop:6,lineHeight:1.5}}>For agents, the CLI and the Python SDK. A key can post and manage tasks as you, spending this balance. It can't withdraw, or see or change your keys and connected apps. Treat it like a password.</div>
       {newKey&&<div style={{marginTop:10,padding:12,borderRadius:10,background:"rgba(255,208,0,0.05)",border:"1px solid rgba(255,208,0,0.2)"}}>
         <div style={{fontSize:11,color:"#ffd000",marginBottom:6}}>Copy this key now. It will not be shown again.</div>
         <div style={{fontFamily:"monospace",fontSize:11,color:"#fff",wordBreak:"break-all",userSelect:"all"}}>{newKey}</div>
@@ -1047,14 +1050,14 @@ export default function App(){
         </div>
       </div>
     </header>
-    <main className="dz-main">
+    <main className="dz-main"><ViewBoundary resetKey={view}>
       {(view==="home"||view==="tasks")&&<TaskListView userLoc={userLoc}/>}
       {view==="post"&&<PostView userLoc={userLoc}/>}
       {view==="wallet"&&<WalletView/>}
       {view==="oauth"&&<ConsentView walletAddr={walletAddr} connect={connect}/>}
       {view==="privacy"&&<PrivacyView/>}
       {view==="how"&&<HowView/>}
-    </main>
+    </ViewBoundary></main>
     <div className="dz-bottom-nav">{NAV.map(n=><button key={n.id} className={view===n.id?"active":""} onClick={()=>setView(n.id)}><span className="ni">{n.i}</span>{translate(n.lk)}</button>)}</div>
     {toast&&<div style={{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",padding:"10px 20px",borderRadius:12,background:"rgba(11,12,18,0.95)",border:"1px solid rgba(0,255,135,0.18)",color:"#00ff87",fontSize:12,fontWeight:600,zIndex:9999,animation:"slideT .3s ease",backdropFilter:"blur(12px)",whiteSpace:"nowrap"}}>{toast}</div>}
     {showLangMenu&&<div style={{position:"fixed",inset:0,zIndex:999}} onClick={()=>setShowLangMenu(false)}/>}

@@ -306,7 +306,8 @@ components:
           description: Workflow steps (preferred). Each step is an action the runner completes in order.
         suggestedFee:
           type: number
-          description: Fee per runner in USDC
+          minimum: 0.5
+          description: Fee per runner in USDC (at least 0.50)
         maxRunners:
           type: integer
           default: 1

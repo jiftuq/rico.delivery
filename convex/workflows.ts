@@ -24,6 +24,16 @@ export const save = mutation({
   },
   handler: async (ctx, { token, ...args }) => {
     const user = await requireUser(ctx, token);
+    // Same size limits as tasks, and a cap per account.
+    const tooLong = (text: string | undefined, max: number) => (text?.length ?? 0) > max;
+    if (tooLong(args.name, 100) || tooLong(args.category, 60) || tooLong(args.taskType, 60)) throw new ConvexError("Name, category or type is too long");
+    if (args.steps.length > 30) throw new ConvexError("A workflow can have at most 30 steps");
+    if (args.steps.some((s) => tooLong(s.action, 500) || tooLong(s.locationAddr, 300) || tooLong(s.requirements, 200) || tooLong(s.proofType, 20))) {
+      throw new ConvexError("A step is too long (action 500, address 300, requirements 200 characters)");
+    }
+    const mine = await ctx.db.query("savedWorkflows").withIndex("by_user", (q) => q.eq("userId", user._id)).take(50);
+    if (mine.length >= 50) throw new ConvexError("You can save at most 50 workflows. Delete one first.");
+    args.defaultRunners = Math.max(1, Math.min(Math.floor(args.defaultRunners) || 1, 100));
     return await ctx.db.insert("savedWorkflows", {
       ...args,
       userId: user._id,
@@ -43,7 +53,7 @@ export const list = query({
     return await ctx.db
       .query("savedWorkflows")
       .withIndex("by_user", (q) => q.eq("userId", userId))
-      .collect();
+      .take(50);
   },
 });
 

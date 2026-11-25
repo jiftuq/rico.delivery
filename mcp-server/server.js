@@ -104,7 +104,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
       dropoffLng: z.number().optional(),
       itemCost: z.number().optional(),
       // Pricing
-      suggestedFee: z.number().describe("Fee per runner in USDC"),
+      suggestedFee: z.number().min(0.5).describe("Fee per runner in USDC (at least 0.50)"),
       maxRunners: z.number().optional().describe("Number of runners needed (default 1, max 100)"),
       privacyZone: z.number().optional().describe("Privacy zone radius in meters (100-500)"),
     },
@@ -164,7 +164,8 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
       _meta: tasksUiMeta,
     },
     async () => {
-      const result = await api("GET", "/tasks");
+      // With the caller's key, their own tasks come back exact; others show the area only.
+      const result = await call("GET", "/tasks");
       if (!result.ok) return toolResult(result);
       const tasks = (result.data.tasks || []).map(t => ({
         id: t._id,
@@ -202,10 +203,9 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
       _meta: tasksUiMeta,
     },
     async ({ taskId }) => {
-      const [result, me] = await Promise.all([
-        api("GET", `/task?id=${encodeURIComponent(taskId)}`),
-        call("GET", "/me"),
-      ]);
+      // The API answers as the caller may see it: exact details for the
+      // poster and accepted runners, the area only for everyone else.
+      const result = await call("GET", `/task?id=${encodeURIComponent(taskId)}`);
       if (!result.ok) {
         return {
           isError: true,
@@ -213,7 +213,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
         };
       }
       // Lets the bid board offer "Accept" only to the person who posted the task.
-      const detail = { ...result.data, viewerIsPoster: me.ok && me.data.userId === result.data.posterId };
+      const detail = { ...result.data, viewerIsPoster: result.data.viewer === "poster" };
       return {
         content: [{ type: "text", text: JSON.stringify(detail, null, 2) }],
         structuredContent: { view: "task", task: detail },

@@ -103,12 +103,14 @@ Cancelled and refunded tasks return to the balance, not on-chain. All on-chain m
 
 ## API Endpoints
 
-Reads are public. Anything that acts for you needs an **API key**, created at [rico.delivery](https://rico.delivery) under **Wallet** after signing in with your wallet. Tasks are paid from a **prepaid USDC balance** on that account. Send the key as `Authorization: Bearer rico_...`.
+Reads are public. Anything that acts for you needs an **API key**, created at [rico.delivery](https://rico.delivery) under **Wallet** after signing in with your wallet. Tasks are paid from a **prepaid USDC balance** on that account, with a fee of at least 0.50 USDC per runner. Send the key as `Authorization: Bearer rico_...`.
+
+Reads answer as the caller may see: without a key, or for someone else's task, addresses come without the house number and positions are rounded to the task's privacy zone; the poster and the accepted runners get exact details when they send their key.
 
 | Route | Method | Purpose | Auth |
 |-------|--------|---------|------|
-| `/tasks` | GET | List open tasks | — |
-| `/task?id=` | GET | One task with its bids | — |
+| `/tasks` | GET | List open tasks | optional |
+| `/task?id=` | GET | One task with its bids | optional |
 | `/task` | POST | Post a task (escrow from balance) | API key |
 | `/bid` | POST | Bid on a task as a runner | API key |
 | `/accept-bid` | POST | Accept a runner's bid | API key |
@@ -116,8 +118,7 @@ Reads are public. Anything that acts for you needs an **API key**, created at [r
 | `/cancel-task` | POST | Cancel, escrow back to balance | API key |
 | `/me` | GET | Balance, deposit address, activity | API key |
 | `/deposit` | POST | Credit a confirmed USDC transfer | API key |
-| `/withdraw` | POST | Send balance to your own wallet | API key |
-| `/subscribe/bids` | GET | SSE bid stream | — |
+| `/subscribe/bids` | GET | SSE bid stream (no positions) | — |
 | `/health` | GET | Health check | — |
 | `/openapi.json` | GET | OpenAPI 3.1 spec | — |
 
@@ -205,7 +206,11 @@ Use the same wallet for `RECEIVING_WALLET` and `PLATFORM_PRIVATE_KEY`, or keep t
 - **Identity** comes from a wallet signature (Sign-In with Ethereum). It yields a session token for the web app; API keys are minted from a session. Only token hashes are stored.
 - **Every action** takes a token and works out the caller from it. No function accepts a user ID as proof of who is calling.
 - **Money** is integer micro-USDC. It enters only through an on-chain transfer the backend has verified, and leaves only through one queue, to the account's own wallet. Payouts can never exceed deposits.
-- **Admin actions** (`tasks:resolveDispute`, `wallet:resolveWithdrawal`) are internal functions, run from the Convex dashboard.
+- **Account actions** (withdrawing, listing or revoking API keys, managing connected apps) need the wallet-signed web session. API keys and connected apps (OAuth tokens) can use the marketplace and read the balance, but can't do these.
+- **Privacy** is enforced on the server (`convex/lib/privacy.ts`): strangers get addresses without the house number and positions snapped to the task's privacy zone, and never see live or last-known positions, the person to meet, proofs, or other users' active tasks and history.
+- **Size limits** on every task field and a 0.50 USDC minimum fee keep any one task small. Public stats come from running counters (`convex/lib/stats.ts`), so no query reads every task; after deploying them, run `tasks:rebuildStats` once.
+- **The approval page** (`/oauth/authorize`) can't be framed by other sites, and only apps returning to claude.ai or claude.com are shown as verified. Others get a warning, stronger when they use the name Claude or RICO. Add hosts with the `OAUTH_TRUSTED_HOSTS` environment variable (comma-separated).
+- **Admin actions** (`tasks:resolveDispute`, `wallet:resolveWithdrawal`, `tasks:rebuildStats`) are internal functions, run from the Convex dashboard.
 - A withdrawal whose outcome is unknown (for example a timeout while sending) is parked as `review` rather than refunded, so it cannot be paid twice. Check the payout wallet on a block explorer, then run `wallet:resolveWithdrawal`.
 
 Tasks created before prepaid balances hold no verified funds: they can be cancelled but not accepted.
