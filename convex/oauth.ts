@@ -86,12 +86,16 @@ export const register = httpAction(async (ctx, request) => {
   // Every client is registered as public (PKCE, no secret), whatever it asked
   // for; RFC 7591 lets the server decide, and the response says "none".
   const clientName = String(body.client_name || "An MCP client").slice(0, 80);
-  const clientId = "rico_client_" + randomToken(16);
-  const now = Date.now();
-  await ctx.runMutation(internal.oauth.storeClient, { clientId, clientName, redirectUris: uris });
+  // The same name and return addresses get the same client_id back, so
+  // repeated registrations don't pile up. Public clients have no secret, so
+  // sharing an ID gives nobody anything they couldn't register themselves.
+  const fingerprint = await hashToken(JSON.stringify([clientName, [...uris].sort()]));
+  const { clientId, createdAt } = await ctx.runMutation(internal.oauth.storeClient, {
+    clientId: "rico_client_" + randomToken(16), clientName, redirectUris: uris, fingerprint,
+  });
   return json({
     client_id: clientId,
-    client_id_issued_at: Math.floor(now / 1000),
+    client_id_issued_at: Math.floor(createdAt / 1000),
     client_name: clientName,
     redirect_uris: uris,
     token_endpoint_auth_method: "none",
@@ -101,8 +105,18 @@ export const register = httpAction(async (ctx, request) => {
 });
 
 export const storeClient = internalMutation({
-  args: { clientId: v.string(), clientName: v.string(), redirectUris: v.array(v.string()) },
-  handler: async (ctx, args) => { await ctx.db.insert("oauthClients", { ...args, createdAt: Date.now() }); },
+  args: { clientId: v.string(), clientName: v.string(), redirectUris: v.array(v.string()), fingerprint: v.string() },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const same = await ctx.db.query("oauthClients").withIndex("by_fingerprint", (q) => q.eq("fingerprint", args.fingerprint)).first();
+    if (same) {
+      // Still unapproved: it gets another day before cleanup.
+      if (same.pendingSince !== undefined) await ctx.db.patch(same._id, { pendingSince: now });
+      return { clientId: same.clientId, createdAt: same.createdAt };
+    }
+    await ctx.db.insert("oauthClients", { ...args, pendingSince: now, createdAt: now });
+    return { clientId: args.clientId, createdAt: now };
+  },
 });
 
 // ── Authorization (called by the consent page on rico.delivery) ──
@@ -178,6 +192,7 @@ export const storeCode = internalMutation({
     }
     const client = await ctx.db.query("oauthClients").withIndex("by_client_id", (q) => q.eq("clientId", a.clientId)).unique();
     if (!client || !redirectAllowed(client.redirectUris, a.redirectUri)) throw new ConvexError("Invalid client or redirect");
+    if (client.pendingSince !== undefined) await ctx.db.patch(client._id, { pendingSince: undefined }); // approved once: kept
     await ctx.db.insert("oauthCodes", {
       codeHash: a.codeHash, clientId: a.clientId, userId: session.userId, redirectUri: a.redirectUri,
       codeChallenge: a.codeChallenge, scope: a.scope, resource: a.resource, expiresAt: Date.now() + CODE_TTL_MS,
@@ -316,11 +331,22 @@ export const sessionUser = internalQuery({
   handler: async (ctx, { token }) => sessionUserFor(ctx, token),
 });
 
-/** Cron: drop expired codes. */
+const UNAPPROVED_CLIENT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Cron: drop expired codes, and app registrations nobody approved within a
+ * day. Registrations from before this cleanup existed carry no pendingSince
+ * and are never removed. Keeps going until nothing is left to drop.
+ */
 export const purgeCodes = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    for (const c of await ctx.db.query("oauthCodes").take(500)) if (c.expiresAt < now) await ctx.db.delete(c._id);
+  args: { now: v.optional(v.number()) }, // a later time, for admins and tests
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const codes = await ctx.db.query("oauthCodes").withIndex("by_expires", (q) => q.lt("expiresAt", now)).take(500);
+    for (const c of codes) await ctx.db.delete(c._id);
+    const stale = await ctx.db.query("oauthClients")
+      .withIndex("by_pending", (q) => q.gt("pendingSince", 0).lt("pendingSince", now - UNAPPROVED_CLIENT_TTL_MS)).take(500);
+    for (const c of stale) await ctx.db.delete(c._id);
+    if (codes.length === 500 || stale.length === 500) await ctx.scheduler.runAfter(0, internal.oauth.purgeCodes, { now: args.now });
   },
 });

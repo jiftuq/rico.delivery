@@ -93,11 +93,12 @@ A balance too low to cover the task returns HTTP 402 and creates nothing.
 1. **Deposit** — send USDC from your wallet to the RICO deposit address. The backend checks the transfer on-chain and credits your balance. Each transaction counts once.
 2. **Post a task** — the escrow (fee x runners, plus item cost) is taken from your balance in the same step that creates the task.
 3. **Accept a bid** — a bid above the suggested fee takes the difference from your balance; a lower one returns it.
-4. **Runner completes** — submits photo/video/GPS proof.
-5. **Poster confirms** — the escrow is released to the runner (minus 7% fee) and sent to their wallet.
-6. **Auto-release** — if the poster doesn't confirm within 2h, the runner is paid automatically.
+4. **Runner completes** — hands in the proof the task asks for (a photo, a video, or a note) before they can mark it done.
+5. **Poster confirms** — the escrow is released to the runner (minus 7% fee) and sent to their wallet. Or the poster opens a **dispute**, which holds the payment until RICO settles it.
+6. **Auto-release** — if the poster neither confirms nor disputes within 24 hours of the proof, the runner is paid automatically.
 7. **Auto-refund** — work accepted but not delivered within 4h goes back to the poster's balance.
-8. **Withdraw** — any time, to the wallet the account belongs to.
+8. **Multi-runner tasks** — the poster can stop taking more runners at any time, and empty slots close by themselves 72 hours after the first runner was accepted. Either way, the money for the empty slots goes back to the balance.
+9. **Withdraw** — any time, to the wallet the account belongs to.
 
 Cancelled and refunded tasks return to the balance, not on-chain. All on-chain movement is **USDC** on **Base mainnet**.
 
@@ -110,11 +111,15 @@ Reads answer as the caller may see: without a key, or for someone else's task, a
 | Route | Method | Purpose | Auth |
 |-------|--------|---------|------|
 | `/tasks` | GET | List open tasks | optional |
-| `/task?id=` | GET | One task with its bids | optional |
+| `/task?id=` | GET | One task with its bids; for the poster and its runners also the runners and their proof | optional |
+| `/my-tasks` | GET | Your unfinished tasks, deliveries waiting for you, and when they pay out | API key |
 | `/task` | POST | Post a task (escrow from balance) | API key |
 | `/bid` | POST | Bid on a task as a runner | API key |
 | `/accept-bid` | POST | Accept a runner's bid | API key |
+| `/reject-bid` | POST | Turn a bid down (that runner can't bid on the task again) | API key |
 | `/confirm-delivery` | POST | Release escrow to the runner | API key |
+| `/dispute` | POST | Hold a delivery's payment for RICO to settle | API key |
+| `/close-slots` | POST | Multi-runner: stop taking runners, refund the empty slots | API key |
 | `/cancel-task` | POST | Cancel, escrow back to balance | API key |
 | `/me` | GET | Balance, deposit address, activity | API key |
 | `/deposit` | POST | Credit a confirmed USDC transfer | API key |
@@ -209,8 +214,11 @@ Use the same wallet for `RECEIVING_WALLET` and `PLATFORM_PRIVATE_KEY`, or keep t
 - **Account actions** (withdrawing, listing or revoking API keys, managing connected apps) need the wallet-signed web session. API keys and connected apps (OAuth tokens) can use the marketplace and read the balance, but can't do these.
 - **Privacy** is enforced on the server (`convex/lib/privacy.ts`): strangers get addresses without the house number and positions snapped to the task's privacy zone, and never see live or last-known positions, the person to meet, proofs, or other users' active tasks and history.
 - **Size limits** on every task field and a 0.50 USDC minimum fee keep any one task small. Public stats come from running counters (`convex/lib/stats.ts`), so no query reads every task; after deploying them, run `tasks:rebuildStats` once.
+- **Proof before payout** (`convex/lib/proof.ts`): a runner can only mark work done after handing in the proof the task asks for (a photo, a video, or a note). Proof files must really be photos or videos, and only runners working on the task can upload. The poster then has 24 hours to confirm or open a dispute before the payment is released automatically.
+- **Rate limits** (`convex/lib/rateLimit.ts`) are per account: 10 tasks posted an hour and 20 open at once, 30 bids an hour, 60 uploads an hour, and limits on chat and disputes. A task holds at most max(20, 2 × runners) open bids; when it is full, a runner with more completed jobs takes the place of the least experienced bid, and the poster can turn bids down. Repeated app registrations are merged, and ones never approved are removed after a day.
+- **Text from other users** (titles, instructions, names, bid comments, proof notes) reaches the AI through the MCP server under `untrusted_text`, with a notice that it is not instructions.
 - **The approval page** (`/oauth/authorize`) can't be framed by other sites, and only apps returning to claude.ai or claude.com are shown as verified. Others get a warning, stronger when they use the name Claude or RICO. Add hosts with the `OAUTH_TRUSTED_HOSTS` environment variable (comma-separated).
-- **Admin actions** (`tasks:resolveDispute`, `wallet:resolveWithdrawal`, `tasks:rebuildStats`) are internal functions, run from the Convex dashboard.
+- **Admin actions** (`tasks:resolveDispute`, `wallet:resolveWithdrawal`, `tasks:rebuildStats`) are internal functions, run from the Convex dashboard. For a task with several runners, `resolveDispute` takes the `runnerId` of the disputed runner.
 - A withdrawal whose outcome is unknown (for example a timeout while sending) is parked as `review` rather than refunded, so it cannot be paid twice. Check the payout wallet on a block explorer, then run `wallet:resolveWithdrawal`.
 
 Tasks created before prepaid balances hold no verified funds: they can be cancelled but not accepted.

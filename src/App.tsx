@@ -1,7 +1,7 @@
 import { Component, useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import { Id } from "../convex/_generated/dataModel";
-import { useUser, useGPS, useOpenTasks, useActiveTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions, useFunds, useApiKeys, useConnectedApps } from "./hooks/useRico";
+import { useUser, useGPS, useOpenTasks, useActiveTasks, useMyTasks, useBids, useChat, useProfile, useStats, useTaskActions, useCourierTracking, useCourierHistory, usePosterHistory, useTaskRunners, useProofFiles, useProofUpload, useSavedWorkflows, useWorkflowActions, useFunds, useApiKeys, useConnectedApps } from "./hooks/useRico";
 import { TILES, CATS, STS, fuzzLoc, maskAddr, haversine, getRoute } from "./lib/utils";
 import { T, LANGS, Lang, TranslationKeys, detectLang } from "./lib/i18n";
 import L from "leaflet";
@@ -236,6 +236,17 @@ function ProfilePopup({profile,onClose}:{profile:any;onClose:()=>void}){
   </div>;
 }
 
+/** What a runner must hand in before marking a task done (mirrors convex/lib/proof.ts). */
+function proofHint(task:any):string|null{
+  const ty=[task.proofType,...(task.steps||[]).map((s:any)=>s.proofType)].filter(Boolean).map((x:string)=>x.toLowerCase());
+  if(!ty.length)return"a note or a photo";
+  // A photo or video also counts as the note, so the note is only mentioned on its own.
+  const parts=[ty.includes("photo")&&"a photo",ty.includes("video")&&"a video"].filter(Boolean);
+  if(parts.length)return parts.join(" and ");
+  return ty.some((x:string)=>!["photo","video","none"].includes(x))?"a note or a photo":null;
+}
+const when=(ms:number)=>new Date(ms).toLocaleString([],{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+
 function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   const t=useLang();const{walletAddr,connect}=useWalletCtx();const{user,userId,token}=useUser(walletAddr);const bids=useBids(task._id);const actions=useTaskActions();const{ensureFunds}=useFunds();
   const[open,setOpen]=useState(false);const[tab,setTab]=useState<"details"|"chat">("details");
@@ -267,7 +278,12 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
   // A bid above the suggested fee costs the poster the difference: top up the balance first if needed.
   const doAcceptBid=async(bidId:string)=>{if(!walletAddr||!token){await connect();return;}try{const bid=bids.find((b:any)=>b._id===bidId);const extra=bid?(multi?bid.fee-task.suggestedFee:(task.itemCost||0)+bid.fee-task.totalEscrowed):0;if(extra>0)await ensureFunds(extra);await actions.acceptBid({token,taskId:task._id,bidId:bidId as Id<"bids">});hap.double()}catch(e:any){hap.error();alert(errMsg(e))}};
   const doCancel=async()=>{hap.medium();if(!token)return;if(!confirm(`Cancel task? $${total.toFixed(2)} USDC goes back to your RICO balance.`))return;try{await actions.cancelTask({token,taskId:task._id});hap.heavy()}catch(e:any){hap.error();alert(errMsg(e))}};
-  const doSubmitProof=()=>{if(!isCourier||!token)return;hap.success();actions.markDelivered({token,taskId:task._id,proofData:proofText||undefined}).catch((e:any)=>alert(errMsg(e)));setProofText("")};
+  const doSubmitProof=async()=>{if(!isCourier||!token)return;try{await actions.markDelivered({token,taskId:task._id,proofData:proofText||undefined});hap.success();setProofText("")}catch(e:any){hap.error();alert(errMsg(e))}};
+  const doReject=async(bidId:string)=>{if(!token)return;if(!confirm("Turn this bid down? It disappears from the list and that runner can't bid on this task again."))return;try{await actions.rejectBid({token,taskId:task._id,bidId:bidId as Id<"bids">});hap.medium()}catch(e:any){hap.error();alert(errMsg(e))}};
+  const openSlots=multi?Math.max(0,maxR-(task.acceptedCount||0)):0;
+  const doCloseSlots=async()=>{if(!token)return;if(!confirm(`Stop looking for more runners? The ${openSlots} empty slot${openSlots===1?"":"s"} close and their money goes back to your RICO balance. The runners you accepted carry on.`))return;try{const r=await actions.closeSlots({token,taskId:task._id});hap.heavy();alert(`$${r.refund.toFixed(2)} USDC went back to your balance.`)}catch(e:any){hap.error();alert(errMsg(e))}};
+  const doDispute=async(runnerId?:string)=>{if(!token)return;hap.error();const reason=prompt("What went wrong? The payment is held until RICO looks at it.");if(!reason)return;try{await actions.openDispute({token,taskId:task._id,reason,runnerId:runnerId as Id<"users">|undefined})}catch(e:any){alert(errMsg(e))}};
+  const need=proofHint(task);const myProofs=proofFiles.filter((f:any)=>f.runnerId===userId).length;
   const doUploadFile=async(e:any)=>{const file=e.target.files?.[0];if(!file||!token)return;hap.light();setUploading(true);try{await uploadProof(file,task._id);hap.success()}catch(err:any){hap.error();alert(errMsg(err))}finally{setUploading(false);[filePhotoBackRef,filePhotoFrontRef,fileVideoBackRef,fileVideoFrontRef].forEach(r=>{if(r.current)r.current.value=""});setShowProofMenu(false)}};
   const ProofMenu=({btnStyle}:{btnStyle:any})=><div style={{position:"relative",display:"inline-block"}}>
     <button style={btnStyle} onClick={(e)=>{e.stopPropagation();hap.tap();setShowProofMenu(!showProofMenu)}}>{uploading?"⏳":"📎 Proof"}</button>
@@ -346,17 +362,19 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           {isDel&&(task.items?.length>0?task.items.map((it:any,i:number)=><div key={i} style={S.escR}><span>🛒 {it.name}</span><span>{it.cost}</span></div>):<div style={S.escR}><span>🛒 {t("items_lbl")}</span><span>{itemCost}</span></div>)}
           <div style={S.escR}><span>{isDel?"🚴 "+t("delivery_lbl"):"🏃 "+t("runner_fee")}{multi?` × ${maxR}`:""}</span><span style={{color:"#00ff87"}}>{task.acceptedFee??task.suggestedFee}{multi?` × ${maxR}`:""}</span></div><div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"4px 0"}}/><div style={S.escR}><span style={{fontWeight:700}}>{t("total")}</span><span style={{fontWeight:700,color:"#fff"}}>${task.totalEscrowed.toFixed(2)} USDC</span></div></div>
 
-        {(task.status==="open"||(multi&&task.status==="in_progress"&&(task.acceptedCount||0)<maxR))&&<div style={{marginTop:8}}>
+        {task.status==="open"&&<div style={{marginTop:8}}>
           {routeKm&&!isOwner&&<div style={{fontSize:11,color:"#00b4ff",padding:"6px 10px",borderRadius:8,background:"rgba(0,180,255,0.05)",border:"1px solid rgba(0,180,255,0.1)",marginBottom:8}}>🛣 {routeKm} {isDel?t("road_km"):t("road_km_single")}</div>}
           <div style={{fontSize:13,fontWeight:600,color:"#fff",marginBottom:8}}>🏷 {t("bids_lbl")} ({bids.length})</div>
           {bids.map((b:any)=><div key={b._id} style={S.bidCard}><div style={{display:"flex",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
             <div style={S.bidAv} onClick={()=>setProfileId(b.courierId)}>{b.courierName[0]}</div>
             <div style={{flex:1,minWidth:120}}><div style={{fontSize:12,fontWeight:600,color:"#fff"}}>{b.courierName} <span style={{fontSize:10,color:b.courierScore>=4.5?"#00ff87":"#ffd000",fontFamily:"monospace"}}>★{b.courierScore}</span></div><div style={{fontSize:11,color:"#777",marginTop:3}}>{b.comment}</div><div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}><span style={S.tagP}>📍 GPS</span><span style={S.tagB}>🛣 {b.tripKm}km</span></div></div>
-            <div><div style={{fontFamily:"monospace",fontSize:15,fontWeight:700,color:"#00ff87"}}>${b.fee.toFixed(2)} <span style={{fontSize:9,color:"#666"}}>USDC</span></div>{isOwner&&<button style={{...S.bidAccBtn,marginTop:6}} onClick={()=>doAcceptBid(b._id)}>✓ {t("pick")}{b.fee>task.suggestedFee?` (+$${(b.fee-task.suggestedFee).toFixed(2)})`:""}</button>}</div>
+            <div><div style={{fontFamily:"monospace",fontSize:15,fontWeight:700,color:"#00ff87"}}>${b.fee.toFixed(2)} <span style={{fontSize:9,color:"#666"}}>USDC</span></div>{isOwner&&!b.accepted&&<div style={{display:"flex",gap:4,marginTop:6,justifyContent:"flex-end"}}><button title="Turn this bid down" style={{...S.bidAccBtn,color:"#ff4757",borderColor:"rgba(255,71,87,0.25)",background:"rgba(255,71,87,0.04)"}} onClick={()=>doReject(b._id)}>✕</button><button style={S.bidAccBtn} onClick={()=>doAcceptBid(b._id)}>✓ {t("pick")}{b.fee>task.suggestedFee?` (+$${(b.fee-task.suggestedFee).toFixed(2)})`:""}</button></div>}{b.accepted&&<div style={{fontSize:10,color:"#00ff87",marginTop:6,textAlign:"right"}}>✓ accepted</div>}{b.rejected&&<div style={{fontSize:10,color:"#ff4757",marginTop:6,textAlign:"right"}}>Turned down</div>}</div>
           </div></div>)}
           {bids.length===0&&<div style={S.empty}>{t("no_bids")}</div>}
           {isOwner&&<div style={{display:"flex",gap:6,marginTop:8}}>
-            <button style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,71,87,0.2)",background:"rgba(255,71,87,0.04)",color:"#ff4757",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={doCancel}>✕ {t("cancel_task")} · {t("refund")} ${total.toFixed(2)}</button>
+            {multi&&(task.acceptedCount||0)>0
+              ?<button style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,208,0,0.25)",background:"rgba(255,208,0,0.04)",color:"#ffd000",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={doCloseSlots}>✋ Stop looking for runners · {t("refund")} ${(openSlots*task.suggestedFee).toFixed(2)}</button>
+              :<button style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,71,87,0.2)",background:"rgba(255,71,87,0.04)",color:"#ff4757",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={doCancel}>✕ {t("cancel_task")} · {t("refund")} ${total.toFixed(2)}</button>}
             <button style={{padding:"12px 16px",borderRadius:10,border:"1px solid rgba(0,180,255,0.2)",background:"rgba(0,180,255,0.04)",color:"#00b4ff",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif"}} onClick={()=>{const txt=`${task.title} — $${total.toFixed(2)} USDC\n${CATS.find(c=>c.id===task.category)?.i||"⚡"} ${task.category}${isDel?` · ${t("pickup_lbl")}: ${task.pickupAddr}`:` · ${t("location_lbl")}: ${locAddr}`}\n${isDel?t("delivery_lbl"):t("runner_fee")}: $${task.suggestedFee.toFixed(2)} USDC\n\n${window.location.origin}`;if(navigator.share){navigator.share({title:`RICO: ${task.title}`,text:txt,url:window.location.origin})}else{navigator.clipboard.writeText(txt);alert(t("link_copied"))}}}>↗ {t("share")}</button>
           </div>}
           {!isOwner&&userId&&userLoc&&<div style={{marginTop:10,padding:14,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",borderRadius:12}}>
@@ -367,23 +385,25 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           </div>}
         </div>}
         {task.status==="in_progress"&&!multi&&task.courierName&&<div style={{...S.trackBar,marginTop:8}}><div style={S.liveDot}/><span style={{color:"#ffd000",fontWeight:700,flex:1}}>{isDel?"🚴":"🏃"} {task.courierName}</span>
-          {isCourier&&(isDel?<button style={{...S.bidAccBtn,minHeight:40}} onClick={()=>{hap.medium();if(token)actions.markDelivered({token,taskId:task._id}).catch((e:any)=>alert(errMsg(e)))}}>📦 {t("mark_delivered")}</button>
-          :<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-            {task.proofType&&task.proofType!=="none"&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
-            <input ref={filePhotoBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
-            <input ref={filePhotoFrontRef} type="file" accept="image/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
-            <input ref={fileVideoBackRef} type="file" accept="video/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
-            <input ref={fileVideoFrontRef} type="file" accept="video/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
+          {isCourier&&<div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            {need&&<input style={{...S.fInp,fontSize:12,padding:"8px 10px",width:120}} placeholder={t("proof_ph")} value={proofText} onChange={e=>setProofText(e.target.value)}/>}
             <ProofMenu btnStyle={{...S.bidAccBtn,minHeight:40,fontSize:11}}/>
-            <button style={{...S.bidAccBtn,minHeight:40}} onClick={doSubmitProof}>✅ {t("submit_proof")}</button>
-          </div>)}
+            <button style={{...S.bidAccBtn,minHeight:40}} onClick={doSubmitProof}>{isDel?"📦 "+t("mark_delivered"):"✅ "+t("submit_proof")}</button>
+          </div>}
         </div>}
+        {task.status==="in_progress"&&!multi&&isCourier&&need&&<div style={{fontSize:11,color:"#a855f7",marginTop:6}}>📸 Before you can mark it done, hand in {need}.{myProofs>0?` You've uploaded ${myProofs}.`:""}</div>}
+        {isActiveRunner&&<>
+          <input ref={filePhotoBackRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
+          <input ref={filePhotoFrontRef} type="file" accept="image/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
+          <input ref={fileVideoBackRef} type="file" accept="video/*" capture="environment" style={{display:"none"}} onChange={doUploadFile}/>
+          <input ref={fileVideoFrontRef} type="file" accept="video/*" capture="user" style={{display:"none"}} onChange={doUploadFile}/>
+        </>}
         {/* Multi-runner: show all runners and their status */}
         {multi&&(task.status==="open"||task.status==="in_progress"||task.status==="delivered")&&taskRunners.length>0&&<div style={{marginTop:10}}>
           <div style={{fontSize:12,fontWeight:600,color:"#ffd000",marginBottom:6}}>👥 Runners ({taskRunners.length}/{maxR})</div>
           {taskRunners.map((tr:any)=><div key={tr._id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:10,background:"rgba(255,255,255,0.01)",border:"1px solid rgba(255,255,255,0.035)",marginBottom:4}}>
             <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#151520,#252540)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#00ff87",flexShrink:0}}>{tr.runnerName[0]}</div>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"#fff"}}>{tr.runnerName}</div><div style={{fontSize:10,color:"#555"}}>${tr.fee.toFixed(2)} · {tr.status}</div></div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600,color:"#fff"}}>{tr.runnerName}</div><div style={{fontSize:10,color:"#555"}}>${tr.fee.toFixed(2)} · {tr.status}{tr.status==="delivered"&&tr.autoReleaseAt?` · paid automatically ${when(tr.autoReleaseAt)}`:""}{userId===tr.runnerId&&tr.status==="accepted"&&need?` · hand in ${need}`:""}</div></div>
             {tr.proofData&&<span style={{fontSize:9,color:"#a855f7"}}>📸</span>}
             {/* Runner can submit proof */}
             {userId===tr.runnerId&&tr.status==="accepted"&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -391,13 +411,15 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
               <ProofMenu btnStyle={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}}/>
               <button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={doSubmitProof}>✅</button>
             </div>}
-            {/* Poster can confirm delivered runners */}
-            {isOwner&&tr.status==="delivered"&&<button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>setShowRating({name:tr.runnerName,runnerId:tr.runnerId})}>✓ Confirm</button>}
+            {/* Poster can confirm delivered runners, or dispute one runner's part */}
+            {isOwner&&(tr.status==="delivered"||tr.status==="disputed")&&<button style={{...S.bidAccBtn,fontSize:10,padding:"6px 10px",minHeight:30}} onClick={()=>setShowRating({name:tr.runnerName,runnerId:tr.runnerId})}>✓ Confirm</button>}
+            {(isOwner||userId===tr.runnerId)&&(tr.status==="accepted"||tr.status==="delivered")&&<button title="Open a dispute about this runner's part" style={{...S.bidAccBtn,fontSize:10,padding:"6px 8px",minHeight:30,color:"#ffa500",borderColor:"rgba(255,165,0,0.3)",background:"rgba(255,165,0,0.04)"}} onClick={()=>doDispute(tr.runnerId)}>⚠️</button>}
             {tr.status==="completed"&&<span style={{fontSize:10,color:"#00ff87",fontWeight:700}}>✓</span>}
           </div>)}
         </div>}
         {task.status==="delivered"&&isOwner&&!multi&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>{hap.heavy();setShowRating({name:task.courierName||"Runner"})}}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
-        {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for poster to confirm. Auto-releases in 2 hours.</div>}
+        {task.status==="delivered"&&isOwner&&!multi&&<div style={{fontSize:11,color:"#00b4ff",marginTop:6}}>⏳ Check the proof below. If you don't confirm or open a dispute, the runner is paid automatically {task.autoReleaseAt?when(task.autoReleaseAt):"24 hours after handing it in"}.</div>}
+        {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for the poster to confirm. You're paid automatically {task.autoReleaseAt?when(task.autoReleaseAt):"24 hours after handing in proof"} unless they open a dispute.</div>}
         {task.proofData&&!multi&&<div style={{padding:10,borderRadius:10,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",marginTop:8,fontSize:12,color:"#a855f7"}}>📸 {t("proof_lbl")}: {task.proofData}</div>}
         {/* Uploaded proof files */}
         {proofFiles.length>0&&<div style={{marginTop:8}}>
@@ -411,7 +433,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
             </div>)}
           </div>
         </div>}
-        {(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>{hap.error();const reason=prompt("Describe the issue:");if(reason&&token)actions.openDispute({token,taskId:task._id,reason}).catch((e:any)=>alert(errMsg(e)))}}>⚠️ Open Dispute</button>}
+        {!multi&&(task.status==="in_progress"||task.status==="delivered")&&canSee&&<button style={{width:"100%",padding:12,borderRadius:10,border:"1px solid rgba(255,165,0,0.2)",background:"rgba(255,165,0,0.04)",color:"#ffa500",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",marginTop:8}} onClick={()=>doDispute()}>⚠️ Open Dispute</button>}
         {task.status==="disputed"&&<div style={{padding:14,borderRadius:12,background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.2)",marginTop:8}}><div style={{fontSize:13,fontWeight:700,color:"#ffa500",marginBottom:4}}>⚠️ Disputed</div><div style={{fontSize:12,color:"#999"}}>Opened by {task.disputeBy}: "{task.disputeReason}"</div><div style={{fontSize:11,color:"#666",marginTop:4}}>Funds are held until resolved. Contact support.</div></div>}
       </>}
       {profileId&&profile&&<ProfilePopup profile={profile} onClose={()=>setProfileId(null)}/>}
@@ -457,6 +479,10 @@ function AgentWorkflows(){
 
 function TaskListView({userLoc}:{userLoc:[number,number]|null}){
   const t=useLang();const openTasks=useOpenTasks();const{walletAddr}=useWalletCtx();const{userId}=useUser(walletAddr);const activeTasks=useActiveTasks();
+  // Deliveries waiting for this user (as poster) to check: they pay out on their own after 24 hours.
+  const myTasks=useMyTasks();
+  const toCheck=myTasks.filter((x:any)=>x.role==="poster").flatMap((x:any)=>x.awaitingConfirmation||[]);
+  const soonest=toCheck.map((d:any)=>d.autoReleaseAt).filter(Boolean).sort((a:number,b:number)=>a-b)[0];
   const[cat,setCat]=useState("all");const[search,setSearch]=useState("");
   const all=[...activeTasks.filter(tk=>tk.status!=="open"),...openTasks];
   const unique=all.filter((tk,i,a)=>a.findIndex(x=>x._id===tk._id)===i);
@@ -466,6 +492,7 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
       <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>{t("tagline")}</h1>
       <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>{t("tagline2")}</p>
     </div>
+    {toCheck.length>0&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.05)",border:"1px solid rgba(0,180,255,0.2)",marginBottom:14,fontSize:12,color:"#00b4ff",lineHeight:1.5}}>📸 {toCheck.length===1?"1 delivery is":`${toCheck.length} deliveries are`} waiting for you to check the proof. Each one is paid automatically 24 hours after it came in, unless you confirm it or open a dispute first{soonest?` (next: ${when(soonest)})`:""}.</div>}
     <AgentWorkflows/>
     <h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("live_tasks")}</h2>
     <p style={{fontSize:12,color:"#3a3a4a",marginTop:2}}>{openTasks.length} {t("open_tap")}</p>
@@ -936,8 +963,12 @@ function HowView(){
         {[
           {m:"POST",p:"/task",d:"Create a workflow task",pay:false},
           {m:"POST",p:"/accept-bid",d:"Accept a runner's bid",pay:false},
+          {m:"POST",p:"/reject-bid",d:"Turn a bid down",pay:false},
           {m:"POST",p:"/confirm-delivery",d:"Confirm + release USDC to runner",pay:false},
+          {m:"POST",p:"/dispute",d:"Hold a delivery's payment for review",pay:false},
+          {m:"POST",p:"/close-slots",d:"Stop taking runners, refund empty slots",pay:false},
           {m:"POST",p:"/cancel-task",d:"Cancel + refund escrowed USDC",pay:false},
+          {m:"GET",p:"/my-tasks",d:"Your tasks + deliveries waiting for you",pay:false},
           {m:"GET",p:"/subscribe/bids",d:"SSE stream of incoming bids",pay:false},
           {m:"GET",p:"/health",d:"Server status",pay:false},
           {m:"GET",p:"/openapi.json",d:"OpenAPI spec (ChatGPT Actions)",pay:false},
@@ -989,7 +1020,7 @@ function HowView(){
         <div style={{color:"#333"}}>{"  v"}</div>
         <div style={{color:"#ff4757"}}>Convex DB (real-time)</div>
         <div style={{color:"#444"}}>{"  |  tasks, bids, users, chat, proofs, ratings"}</div>
-        <div style={{color:"#444"}}>{"  |  Crons: auto-release (2h), auto-refund (4h)"}</div>
+        <div style={{color:"#444"}}>{"  |  Crons: auto-release (24h after proof), auto-refund (4h), empty slots close (72h)"}</div>
         <div style={{color:"#333"}}>{"  v"}</div>
         <div style={{color:"#0052ff"}}>Base Chain (USDC)</div>
         <div style={{color:"#444"}}>{"  |  Escrow on post, payout on confirm, refund on cancel"}</div>

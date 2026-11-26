@@ -41,6 +41,16 @@ async function signIn() {
 const fund = (u, usdc) => run("wallet:creditDeposit", { userId: u.userId, txHash: "0x" + [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, "0")).join(""), amountMicro: usdc * 1e6, blockNumber: 1 });
 const task = (u, over = {}) => c.mutation(api.tasks.create, { token: u.token, title: "Test", category: "info", details: "d", taskType: "gather-info", locationAddr: "Somewhere 1", locationLat: 50.85, locationLng: 4.35, suggestedFee: 5, ...over });
 const bid = (u, taskId, fee) => c.mutation(api.tasks.placeBid, { token: u.token, taskId, fee, comment: "", lat: 50, lng: 4, tripKm: 1 });
+const accept = (u, taskId, bidId) => c.mutation(api.tasks.acceptBid, { token: u.token, taskId, bidId });
+const deliver = (u, taskId, proofData) => c.mutation(api.tasks.markDelivered, { token: u.token, taskId, proofData });
+const getT = (u, taskId) => c.query(api.tasks.getTask, { taskId, token: u.token });
+/** Upload a file as a runner and attach it to the task as proof. */
+async function attach(u, taskId, contentType = "image/png", claimed = contentType) {
+  const url = await c.mutation(api.proofs.generateUploadUrl, { token: u.token, taskId });
+  const { storageId } = await (await fetch(url, { method: "POST", headers: { "Content-Type": contentType }, body: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]) })).json();
+  return c.mutation(api.proofs.saveProofFile, { token: u.token, taskId, storageId, fileType: claimed, fileName: "proof" });
+}
+const H = 3600e3;
 
 console.log("Sign-in");
 const poster = await signIn(), runner = await signIn(), runner2 = await signIn(), mallory = await signIn();
@@ -79,14 +89,18 @@ await c.mutation(api.chat.send, { token: runner.token, taskId: t1, text: "on my 
 ok((await c.query(api.chat.list, { token: mallory.token, taskId: t1 })).length === 0, "stranger cannot read chat");
 ok((await c.query(api.chat.list, { token: poster.token, taskId: t1 })).length >= 2, "poster reads chat");
 await rejects(c.mutation(api.tasks.cancel, { token: poster.token, taskId: t1 }), "cannot cancel once in progress", /Cannot cancel/);
-for (const fn of ["tasks:resolveDispute", "tasks:autoRelease", "tasks:refundStuck", "wallet:creditDeposit", "wallet:finishWithdrawal", "payments:processWithdrawals"]) {
+for (const fn of ["tasks:resolveDispute", "tasks:autoRelease", "tasks:refundStuck", "tasks:closeStaleSlots", "wallet:creditDeposit", "wallet:finishWithdrawal", "payments:processWithdrawals"]) {
   const [m, f] = fn.split(":");
   const call = fn.startsWith("payments") ? c.action(api[m][f], {}) : c.mutation(api[m][f], { taskId: t1, resolution: "courier", userId: mallory.userId, txHash: "0x1", amountMicro: 1e9, blockNumber: 1 });
   await rejects(call, `${fn} is not callable from outside`);
 }
 
 console.log("Payout");
-await c.mutation(api.tasks.markDelivered, { token: runner.token, taskId: t1, proofData: "done" });
+await rejects(deliver(runner, t1, "done"), "a photo task can't be marked done with only a note", /needs proof.*a photo/);
+await rejects(c.mutation(api.proofs.generateUploadUrl, { token: mallory.token, taskId: t1 }), "a stranger can't upload proof to it", /Only a runner/);
+await attach(runner, t1);
+const md = await deliver(runner, t1, "done");
+ok(Math.abs(md.autoReleaseAt - Date.now() - 24 * H) < 60e3, "with a photo it's marked done, and pays out on its own in 24 hours");
 const conf = await c.mutation(api.tasks.confirmDelivery, { token: poster.token, taskId: t1, ratingScore: 5 });
 ok(near(conf.payout, 5.58) && near(conf.burn, 0.42), "runner gets fee minus 7%", JSON.stringify(conf));
 await rejects(c.mutation(api.tasks.confirmDelivery, { token: poster.token, taskId: t1 }), "cannot confirm twice", /Cannot confirm/);
@@ -111,8 +125,10 @@ ok(near(await bal(poster), 89), "lower bid refunds the difference");
 await rejects(c.mutation(api.tasks.cancel, { token: poster.token, taskId: t3 }), "cannot cancel after accepting a runner", /already been accepted/);
 await c.mutation(api.tasks.acceptBid, { token: poster.token, taskId: t3, bidId: m2 });
 ok(near(await bal(poster), 88), "higher bid charges the difference");
-await c.mutation(api.tasks.markDelivered, { token: runner.token, taskId: t3 });
-await c.mutation(api.tasks.markDelivered, { token: runner2.token, taskId: t3 });
+await rejects(deliver(runner, t3), "each runner needs their own proof", /needs proof/);
+await attach(runner, t3); await attach(runner2, t3);
+await deliver(runner, t3);
+await deliver(runner2, t3);
 await rejects(c.mutation(api.tasks.confirmDelivery, { token: poster.token, taskId: t3, runnerId: mallory.userId }), "cannot pay someone not on the task", /not delivered/);
 await c.mutation(api.tasks.confirmDelivery, { token: poster.token, taskId: t3, runnerId: runner.userId });
 await rejects(c.mutation(api.tasks.confirmDelivery, { token: poster.token, taskId: t3, runnerId: runner.userId }), "cannot pay the same runner twice", /not delivered/);
@@ -318,6 +334,146 @@ const tricky = await dc(await regC("RICO official", ["https://claude.ai.evil.exa
 ok(tricky.trust === "unverified" && tricky.impersonating, "a look-alike host is not verified");
 const plain = await dc(await regC("Acme agent", ["https://acme.example/cb"]), "https://acme.example/cb");
 ok(plain.trust === "unverified" && !plain.impersonating, "other apps are unverified but not flagged");
+
+// ── M1: a runner is only paid for work with proof, and the poster gets time to check it ──
+// The cron jobs are run with a later `now` to stand in for the hours passing.
+console.log("Proof before payout");
+const pr = await signIn(), pw = await signIn(), px = await signIn(); await fund(pr, 100);
+const textTask = await task(pr, { proofType: "text", suggestedFee: 1 });
+await accept(pr, textTask, await bid(pw, textTask, 1));
+await rejects(deliver(pw, textTask), "text proof: handing in nothing is refused", /a note or a photo/);
+await deliver(pw, textTask, "The shop opens at 9");
+ok((await getT(pr, textTask)).status === "delivered", "text proof: a note is enough");
+const noneTask = await task(pr, { proofType: "none", suggestedFee: 1, steps: [{ order: 1, action: "Wave at the camera", proofType: "none" }] });
+await accept(pr, noneTask, await bid(pw, noneTask, 1));
+await deliver(pw, noneTask);
+ok((await getT(pr, noneTask)).status === "delivered", "no proof asked for: none needed");
+const delTask = await task(pr, { taskType: "delivery", category: "delivery", pickupAddr: "Rue A 1", pickupLat: 50.85, pickupLng: 4.35, dropoffAddr: "Rue B 2", dropoffLat: 50.86, dropoffLng: 4.36, suggestedFee: 1 });
+await accept(pr, delTask, await bid(pw, delTask, 1));
+await rejects(deliver(pw, delTask), "a delivery with no proof type still needs a note or a photo", /a note or a photo/);
+const vidTask = await task(pr, { proofType: "video", suggestedFee: 1, steps: [{ order: 1, action: "Film the queue", proofType: "video" }] });
+await accept(pr, vidTask, await bid(pw, vidTask, 1));
+await attach(pw, vidTask, "image/jpeg");
+await rejects(deliver(pw, vidTask), "video proof: a photo isn't enough", /a video/);
+await attach(pw, vidTask, "video/mp4");
+await deliver(pw, vidTask);
+ok((await getT(pr, vidTask)).status === "delivered", "video proof: accepted with a video");
+await rejects(attach(pw, vidTask, "text/html"), "an HTML upload is refused as proof", /must be a photo/);
+await rejects(attach(pw, vidTask, "text/html", "image/png"), "calling an HTML file a photo doesn't help", /must be a photo/);
+ok((await c.query(api.proofs.getProofFiles, { taskId: vidTask, token: pr.token })).every((f) => /^(image|video)\//.test(f.fileType)), "only photos and videos get attached");
+await rejects(c.mutation(api.proofs.generateUploadUrl, { token: px.token }), "no upload link for someone working on nothing", /Only a runner/);
+const prKey = (await c.action(api.auth.createApiKey, { token: pr.token })).key;
+const withProof = await (await fetch(`${SITE}/task?id=${vidTask}`, { headers: { Authorization: "Bearer " + prKey } })).json();
+ok(withProof.proofs?.length === 2 && withProof.proofs.every((f) => f.url && f.runnerId === pw.userId), "HTTP /task: the poster gets the proof, with links");
+ok((await (await fetch(`${SITE}/task?id=${vidTask}`)).json()).proofs === undefined, "HTTP /task: strangers get none");
+const mine = await http("GET", "/my-tasks", null, prKey);
+const waiting = mine.body.tasks?.find((t) => t.taskId === vidTask)?.awaitingConfirmation?.[0];
+ok(mine.status === 200 && waiting?.runnerId === pw.userId && waiting.autoReleaseAt > Date.now() + 23 * H, "HTTP /my-tasks: deliveries to check, and when they pay out", JSON.stringify(waiting));
+run("tasks:autoRelease", { now: Date.now() + 23 * H });
+ok((await getT(pr, textTask)).status === "delivered", "not paid out after 23 hours");
+const disp = await http("POST", "/dispute", { taskId: noneTask, reason: "Nobody waved" }, prKey);
+ok(disp.status === 200 && (await getT(pr, noneTask)).status === "disputed", "HTTP /dispute: the poster disputes a delivery", JSON.stringify(disp.body));
+const prBal = await bal(pr);
+run("tasks:autoRelease", { now: Date.now() + 25 * H });
+ok((await getT(pr, textTask)).status === "completed", "paid out after 24 hours with no answer from the poster");
+ok((await getT(pr, noneTask)).status === "disputed", "a disputed delivery isn't paid out");
+run("tasks:resolveDispute", { taskId: noneTask, resolution: "poster" });
+ok((await getT(pr, noneTask)).status === "refunded" && near(await bal(pr), prBal + 1), "the admin can settle it for the poster");
+
+// ── M2: money for empty slots on a multi-runner task comes back ──
+console.log("Multi-runner slots");
+const mp = await signIn(), slotA = await signIn(), slotB = await signIn(), slotC = await signIn(); await fund(mp, 100);
+const three = await task(mp, { suggestedFee: 10, maxRunners: 3 });
+await accept(mp, three, await bid(slotA, three, 10));
+await rejects(c.mutation(api.tasks.cancel, { token: mp.token, taskId: three }), "cancel is refused once a runner is in", /Close the open slots/);
+await attach(slotA, three); await deliver(slotA, three);
+await c.mutation(api.tasks.confirmDelivery, { token: mp.token, taskId: three, runnerId: slotA.userId });
+const mpBal = await bal(mp);
+await rejects(c.mutation(api.tasks.closeSlots, { token: slotA.token, taskId: three }), "only the poster can close the slots", /Only the poster/);
+const cs = await c.mutation(api.tasks.closeSlots, { token: mp.token, taskId: three });
+ok(near(cs.refund, 20) && near(await bal(mp), mpBal + 20), "closing the slots returns the money for the 2 empty ones", JSON.stringify(cs));
+const threeT = await getT(mp, three);
+ok(threeT.status === "completed" && threeT.escrowMicro === 0, "its only runner paid, the task is complete", `${threeT.status}, escrow ${threeT.escrowMicro}`);
+await rejects(bid(slotB, three, 10), "no new bids once closed", /Not open/);
+const four = await task(mp, { suggestedFee: 5, maxRunners: 4 });
+await accept(mp, four, await bid(slotA, four, 5));
+await accept(mp, four, await bid(slotB, four, 5));
+await attach(slotB, four); await deliver(slotB, four);
+const fourBal = await bal(mp);
+run("tasks:closeStaleSlots", { now: Date.now() + 71 * H });
+ok((await getT(mp, four)).status === "open", "still taking runners after 71 hours");
+run("tasks:closeStaleSlots", { now: Date.now() + 73 * H });
+const fourT = await getT(mp, four);
+ok(fourT.status === "in_progress" && fourT.slotsClosedAt && near(await bal(mp), fourBal + 10), "after 72 hours the empty slots close and their money comes back", `${fourT.status}, balance +${(await bal(mp)) - fourBal}`);
+run("tasks:refundStuck", { now: Date.now() + 78 * H });
+ok((await getT(mp, four)).status === "delivered" && near(await bal(mp), fourBal + 15), "a runner who never delivers loses the slot, and its money comes back");
+run("tasks:autoRelease", { now: Date.now() + 100 * H });
+const fourDone = await getT(mp, four);
+ok(fourDone.status === "completed" && fourDone.escrowMicro === 0, "the runner who delivered is paid, and the task settles to zero", `${fourDone.status}, escrow ${fourDone.escrowMicro}`);
+const two = await task(mp, { suggestedFee: 4, maxRunners: 2 });
+await accept(mp, two, await bid(slotA, two, 4)); await accept(mp, two, await bid(slotC, two, 4));
+await attach(slotA, two); await attach(slotC, two); await deliver(slotA, two); await deliver(slotC, two);
+ok((await getT(mp, two)).status === "delivered", "both delivered: the task waits for the poster");
+await rejects(c.mutation(api.tasks.openDispute, { token: mp.token, taskId: two, reason: "Blurry" }), "a multi-runner dispute names the runner", /Name the runner/);
+await c.mutation(api.tasks.openDispute, { token: mp.token, taskId: two, reason: "Blurry photo", runnerId: slotA.userId });
+run("tasks:autoRelease", { now: Date.now() + 25 * H });
+const twoRunners = await c.query(api.tasks.getTaskRunners, { taskId: two, token: mp.token });
+ok(twoRunners.find((r) => r.runnerId === slotA.userId)?.status === "disputed" && twoRunners.find((r) => r.runnerId === slotC.userId)?.status === "completed", "only the disputed runner's payment is held");
+ok((await c.query(api.tasks.getTaskRunners, { taskId: two })).every((r) => r.disputeReason === undefined), "strangers don't see the dispute text");
+await c.mutation(api.tasks.confirmDelivery, { token: mp.token, taskId: two, runnerId: slotA.userId });
+const twoT = await getT(mp, two);
+ok(twoT.status === "completed" && twoT.escrowMicro === 0, "the poster can still pay a disputed runner, which settles the task");
+const crowd = [];
+for (let i = 0; i < 21; i++) crowd.push(await signIn());
+const eleven = await task(mp, { suggestedFee: 0.5, maxRunners: 11 });
+for (const u of crowd) await bid(u, eleven, 0.5);
+ok((await c.query(api.tasks.getBids, { taskId: eleven })).length === 21, "a task for 11 runners takes more than 20 bids");
+
+// ── M3: free accounts can't crowd a task out, and nobody can post or chat without limit ──
+console.log("Bid spam and rate limits");
+const sp = await signIn(); await fund(sp, 20);
+const target = await task(sp, { suggestedFee: 1 });
+for (const u of crowd.slice(0, 20)) await bid(u, target, 1);
+await rejects(bid(crowd[20], target, 1), "when a task's bids are full, another brand-new account can't push in", /most bids/);
+const vet = await bid(runner, target, 1);
+const tb = await c.query(api.tasks.getBids, { taskId: target });
+ok(tb.length === 20 && tb.some((b) => b._id === vet), "a runner with completed jobs takes the place of a brand-new bid", `${tb.length} bids`);
+ok((await c.query(api.tasks.listOpen, {})).find((t) => t._id === target)?.bidCount === 20, "the board's bid count stays right");
+const spamBid = tb.find((b) => b.courierId !== runner.userId);
+const spammer = crowd.find((u) => u.userId === spamBid.courierId);
+await rejects(c.mutation(api.tasks.rejectBid, { token: runner.token, taskId: target, bidId: spamBid._id }), "only the poster can turn a bid down", /Only the poster/);
+const rj = await http("POST", "/reject-bid", { taskId: target, bidId: spamBid._id }, (await c.action(api.auth.createApiKey, { token: sp.token })).key);
+ok(rj.status === 200 && !(await c.query(api.tasks.getBids, { taskId: target })).some((b) => b._id === spamBid._id), "HTTP /reject-bid: the bid disappears from the list");
+ok((await c.query(api.tasks.getBids, { taskId: target, token: spammer.token })).find((b) => b._id === spamBid._id)?.rejected === true, "its bidder sees it was turned down");
+await rejects(bid(spammer, target, 1), "and can't bid on that task again", /turned down/);
+await rejects(accept(sp, target, spamBid._id), "a turned-down bid can't be accepted", /turned this bid down/);
+await bid(crowd[20], target, 1);
+ok((await c.query(api.tasks.getBids, { taskId: target })).length === 20, "the freed place takes a new bid");
+const rl = await signIn(); await fund(rl, 10);
+const rlKey = (await c.action(api.auth.createApiKey, { token: rl.token })).key;
+const codes = [];
+for (let i = 0; i < 11; i++) codes.push((await http("POST", "/task", { ...post, suggestedFee: 0.5 }, rlKey)).status);
+ok(codes.slice(0, 10).every((s) => s === 200) && codes[10] === 429, "the 11th task in an hour is refused (HTTP 429)", codes.join(","));
+const chatTask = await task(sp, { suggestedFee: 1 });
+await accept(sp, chatTask, await bid(crowd[1], chatTask, 1));
+let sent = 0;
+try { for (let i = 0; i < 31; i++) { await c.mutation(api.chat.send, { token: crowd[1].token, taskId: chatTask, text: "msg " + i }); sent++; } } catch (e) { ok(/Too many messages/.test(msg(e)) && sent === 30, "chat: 30 messages at once, then a pause", `${sent} sent: ${msg(e)}`); }
+if (sent === 31) ok(false, "chat: 30 messages at once, then a pause", "31 went through");
+
+console.log("App registrations and cleanup");
+const regApp = async (name, uris) => (await (await fetch(SITE + "/oauth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: name, redirect_uris: uris }) })).json()).client_id;
+const uniq = "Dup app " + crypto.randomUUID().slice(0, 8), DUP = "https://dup.example/cb";
+const r1 = await regApp(uniq, [DUP]), r2 = await regApp(uniq, [DUP]), r3 = await regApp(uniq + " two", [DUP]);
+ok(r1 === r2 && r3 !== r1, "the same app registering twice gets the same client_id; another app gets its own");
+await c.action(api.oauth.approveAuthorization, { token: m4.token, clientId: r1, redirectUri: DUP, codeChallenge: chal, codeChallengeMethod: "S256" });
+run("oauth:purgeCodes", { now: Date.now() + 25 * H });
+ok((await dc(r1, DUP)).ok === true && (await dc(r3, DUP)).ok === false, "registrations nobody approved go after a day; approved ones stay");
+ok((await dc(reg4.client_id, CB)).ok === true, "the connected Claude app is still registered");
+const pa = privateKeyToAccount(generatePrivateKey());
+const pend = await c.action(api.auth.startSignIn, { walletAddress: pa.address });
+run("auth:purgeExpired", { now: Date.now() + 11 * 60e3 });
+await rejects(c.action(api.auth.finishSignIn, { nonce: pend.nonce, signature: await pa.signMessage({ message: pend.message }) }), "expired sign-in requests are cleaned up", /expired|already used/);
+ok((await c.query(api.wallet.summary, { token: appTok })) !== null, "a live app token survives the cleanup");
 
 console.log("Ledger adds up");
 for (const [n, u] of [["poster", poster], ["runner", runner], ["runner2", runner2]]) {

@@ -94,11 +94,22 @@ export default defineSchema({
     disputeReason: v.optional(v.string()),
     disputeBy: v.optional(v.string()),
     disputedAt: v.optional(v.number()),
+    // Single-runner tasks: when an unconfirmed, undisputed delivery pays out.
+    autoReleaseAt: v.optional(v.number()),
+    // Multi-runner tasks: when the first runner was accepted, and when the
+    // poster (or the timeout) stopped taking more runners.
+    firstAcceptedAt: v.optional(v.number()),
+    slotsClosedAt: v.optional(v.number()),
+    bidCount: v.optional(v.number()), // bids still shown (not turned down)
   })
     .index("by_status", ["status"])
     .index("by_poster", ["posterId"])
+    .index("by_poster_status", ["posterId", "status"])
     .index("by_courier", ["courierId"])
-    .index("by_paymentTx", ["paymentTx"]),
+    .index("by_paymentTx", ["paymentTx"])
+    .index("by_auto_release", ["autoReleaseAt"])
+    .index("by_status_accepted", ["status", "acceptedAt"])
+    .index("by_status_first_accepted", ["status", "firstAcceptedAt"]),
 
   bids: defineTable({
     taskId: v.id("tasks"),
@@ -112,6 +123,7 @@ export default defineSchema({
     courierScore: v.float64(),
     courierDeliveries: v.number(),
     accepted: v.boolean(),
+    rejected: v.optional(v.boolean()), // turned down by the poster
     createdAt: v.number(),
   })
     .index("by_task", ["taskId"])
@@ -133,18 +145,25 @@ export default defineSchema({
     runnerName: v.string(),
     bidId: v.id("bids"),
     fee: v.float64(),
-    status: v.string(), // accepted, in_progress, delivered, completed, disputed
+    // accepted -> delivered -> completed, or expired (never delivered),
+    // disputed (held for an admin), refunded (dispute settled for the poster)
+    status: v.string(),
     proofData: v.optional(v.string()),
     lat: v.optional(v.float64()),
     lng: v.optional(v.float64()),
     acceptedAt: v.number(),
     completedAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
+    autoReleaseAt: v.optional(v.number()),
+    disputeReason: v.optional(v.string()),
+    disputeBy: v.optional(v.string()),
+    disputedAt: v.optional(v.number()),
   })
     .index("by_task", ["taskId"])
     .index("by_runner", ["runnerId"])
     .index("by_task_runner", ["taskId", "runnerId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_auto_release", ["autoReleaseAt"]),
 
   // Proof files — photos/videos uploaded by runners
   proofFiles: defineTable({
@@ -189,7 +208,9 @@ export default defineSchema({
     walletAddress: v.string(),
     message: v.string(),
     expiresAt: v.number(),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_expires", ["expiresAt"]),
 
   // Web sessions and API keys. Only the SHA-256 hash of a token is stored.
   authTokens: defineTable({
@@ -204,16 +225,25 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
   })
     .index("by_hash", ["tokenHash"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_expires", ["expiresAt"]),
 
   // ── OAuth (so Claude and other MCP clients can "Connect" an account) ──
   // Clients register themselves (RFC 7591). Public clients only: no secrets.
+  // The same app registering again gets its existing client_id back
+  // (fingerprint = hash of name + redirect URIs). A registration nobody has
+  // approved yet carries pendingSince, and is removed after a day.
   oauthClients: defineTable({
     clientId: v.string(),
     clientName: v.string(),
     redirectUris: v.array(v.string()),
+    fingerprint: v.optional(v.string()),
+    pendingSince: v.optional(v.number()),
     createdAt: v.number(),
-  }).index("by_client_id", ["clientId"]),
+  })
+    .index("by_client_id", ["clientId"])
+    .index("by_fingerprint", ["fingerprint"])
+    .index("by_pending", ["pendingSince"]),
 
   // One-time authorization codes, valid for a few minutes. Hash only.
   oauthCodes: defineTable({
@@ -225,7 +255,9 @@ export default defineSchema({
     scope: v.optional(v.string()),
     resource: v.optional(v.string()),
     expiresAt: v.number(),
-  }).index("by_hash", ["codeHash"]),
+  })
+    .index("by_hash", ["codeHash"])
+    .index("by_expires", ["expiresAt"]),
 
   // ── Prepaid balance ──
   // Verified on-chain USDC transfers into the platform wallet. One row per tx.
@@ -271,6 +303,13 @@ export default defineSchema({
   stats: defineTable({
     key: v.string(),
     value: v.number(),
+  }).index("by_key", ["key"]),
+
+  // Per-account rate limits (lib/rateLimit.ts): one token bucket per action and user.
+  rateLimits: defineTable({
+    key: v.string(), // "<action>:<userId>"
+    tokens: v.number(),
+    updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
   ratings: defineTable({

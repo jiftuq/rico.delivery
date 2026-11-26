@@ -201,16 +201,19 @@ export const storeApiKey = internalMutation({
   },
 });
 
-/** Cron: drop expired sign-in requests and sessions. */
+/**
+ * Cron: drop expired sign-in requests, sessions and app tokens. Reads only
+ * expired rows (by_expires) and keeps going until none are left, so a flood
+ * of sign-in requests can't outgrow it. API keys never expire.
+ */
 export const purgeExpired = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    for (const c of await ctx.db.query("authChallenges").take(500)) {
-      if (c.expiresAt < now) await ctx.db.delete(c._id);
-    }
-    for (const t of await ctx.db.query("authTokens").take(1000)) {
-      if (t.expiresAt !== undefined && t.expiresAt < now) await ctx.db.delete(t._id);
-    }
+  args: { now: v.optional(v.number()) }, // a later time, for admins and tests
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const challenges = await ctx.db.query("authChallenges").withIndex("by_expires", (q) => q.lt("expiresAt", now)).take(500);
+    for (const c of challenges) await ctx.db.delete(c._id);
+    const tokens = await ctx.db.query("authTokens").withIndex("by_expires", (q) => q.gt("expiresAt", 0).lt("expiresAt", now)).take(500);
+    for (const t of tokens) await ctx.db.delete(t._id);
+    if (challenges.length === 500 || tokens.length === 500) await ctx.scheduler.runAfter(0, internal.auth.purgeExpired, { now: args.now });
   },
 });

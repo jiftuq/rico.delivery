@@ -5,6 +5,8 @@ import { Doc, Id } from "./_generated/dataModel";
 import { requireUser, userForToken } from "./lib/auth";
 import { MIN_FEE_MICRO, MIN_WITHDRAWAL_MICRO, credit, debit, feeOn, fmt, fromMicro, toMicro } from "./lib/money";
 import { bidView, clampZone, runnerView, taskView, viewerOf } from "./lib/privacy";
+import { describeNeed, proofNeeded, requireProof } from "./lib/proof";
+import { rateLimit } from "./lib/rateLimit";
 import { bump, readStat } from "./lib/stats";
 import { enqueueWithdrawal } from "./wallet";
 
@@ -16,9 +18,29 @@ import { enqueueWithdrawal } from "./wallet";
 //
 // Reads go through lib/privacy.ts: the poster and accepted runners see a task
 // exactly, everyone else sees the area only and no positions.
+//
+// A task's life:
+//   open          taking bids. Multi-runner tasks stay open while slots fill;
+//                 runners accepted early can already work and deliver.
+//   in_progress   a runner (or every slot) is taken; work not yet delivered.
+//                 Refunded if nothing is delivered within 4 hours.
+//   delivered     proof is in (lib/proof.ts). The poster confirms, or opens a
+//                 dispute; otherwise the runner is paid after 24 hours.
+//   completed, refunded, cancelled, or disputed (held for an admin)
+// Multi-runner tasks track each runner separately (taskRunners) and stop
+// taking runners when the poster closes the open slots, or 72 hours after
+// the first runner was accepted. Either way the money for empty slots goes
+// back to the poster.
 
-const TWO_HOURS = 2 * 60 * 60 * 1000;
-const FOUR_HOURS = 4 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+/** An unconfirmed, undisputed delivery pays the runner after this long. */
+const RELEASE_AFTER_MS = 24 * HOUR;
+/** Accepted work that isn't delivered within this long is refunded. */
+const DELIVER_WITHIN_MS = 4 * HOUR;
+/** A multi-runner task stops taking runners this long after its first one. */
+const FILL_SLOTS_WITHIN_MS = 72 * HOUR;
+/** Tasks one account can have open at once. */
+const MAX_OPEN_TASKS = 20;
 
 // Size limits for everything a task can carry. They keep any one task small,
 // so the public list can never grow past what a query may read.
@@ -71,6 +93,38 @@ function requireFunded(task: Doc<"tasks">) {
   return task.escrowMicro;
 }
 
+async function systemNote(ctx: MutationCtx, taskId: Id<"tasks">, senderId: Id<"users">, text: string) {
+  await ctx.db.insert("messages", { taskId, senderId, senderName: "System", role: "system", text, createdAt: Date.now() });
+}
+
+// ── Bids ──
+
+/** Open bids a task holds at once: enough to fill every slot twice. */
+const bidSlots = (task: Doc<"tasks">) => Math.max(20, 2 * (task.maxRunners || 1));
+/** Bids a task can collect in all, counting the ones turned down. */
+const maxBidRows = (task: Doc<"tasks">) => bidSlots(task) + 100;
+const isOpenBid = (b: Doc<"bids">) => !b.accepted && !b.rejected;
+
+/** More completed jobs wins; a better rating breaks ties. */
+function outranks(a: { deliveries: number; score: number }, b: { deliveries: number; score: number }) {
+  return a.deliveries !== b.deliveries ? a.deliveries > b.deliveries : a.score > b.score;
+}
+
+// ── Multi-runner slots ──
+
+const SETTLED = new Set(["completed", "expired", "refunded"]);
+const isSettled = (tr: Doc<"taskRunners">) => SETTLED.has(tr.status);
+/** Every slot is taken, or the poster (or the timeout) closed the rest. */
+const slotsFull = (task: Doc<"tasks">) => (task.acceptedCount || 0) >= (task.maxRunners || 1) || !!task.slotsClosedAt;
+
+async function runnersOf(ctx: QueryCtx, taskId: Id<"tasks">) {
+  return ctx.db.query("taskRunners").withIndex("by_task", (q) => q.eq("taskId", taskId)).take(100);
+}
+
+async function runnerEntry(ctx: QueryCtx, taskId: Id<"tasks">, runnerId: Id<"users">) {
+  return ctx.db.query("taskRunners").withIndex("by_task_runner", (q) => q.eq("taskId", taskId).eq("runnerId", runnerId)).first();
+}
+
 /**
  * Every change to a task goes through here, so the status counters behind
  * getStats stay right whatever path changed the status.
@@ -110,7 +164,7 @@ async function payRunner(ctx: MutationCtx, task: Doc<"tasks">, runnerId: Id<"use
   return { payoutMicro: payout, feeMicro: fee, escrowLeft: escrow - gross };
 }
 
-/** Return whatever a task still holds to its poster's balance. */
+/** Return whatever a task still holds (or `escrowMicro` of it) to its poster's balance. */
 async function refundEscrow(ctx: MutationCtx, task: Doc<"tasks">, escrowMicro = task.escrowMicro ?? 0) {
   if (escrowMicro > 0) await credit(ctx, task.posterId, escrowMicro, "refund", { taskId: task._id });
   await setEscrow(ctx, task._id, (task.escrowMicro ?? 0) - escrowMicro);
@@ -123,6 +177,69 @@ async function rate(ctx: MutationCtx, taskId: Id<"tasks">, raterId: Id<"users">,
   const newTotal = runner.totalRatings + 1;
   const newSum = runner.ratingSum + score;
   await ctx.db.patch(runner._id, { totalRatings: newTotal, ratingSum: newSum, score: Math.round((newSum / newTotal) * 10) / 10 });
+}
+
+/**
+ * Bring a multi-runner task's status in line with its runners, once it has
+ * stopped taking new ones: in_progress while someone still has to deliver,
+ * delivered while deliveries wait to be confirmed (or disputes settled),
+ * then completed or refunded, with anything left over returned to the poster.
+ */
+async function syncMulti(ctx: MutationCtx, taskId: Id<"tasks">, now: number) {
+  const task = await ctx.db.get(taskId);
+  if (!task || !slotsFull(task) || !["open", "in_progress", "delivered"].includes(task.status)) return;
+  const all = await runnersOf(ctx, taskId);
+  if (all.every(isSettled)) {
+    await refundEscrow(ctx, task);
+    await patchTask(ctx, taskId, { status: all.some((r) => r.status === "completed") ? "completed" : "refunded", completedAt: now });
+    return;
+  }
+  const status = all.some((r) => r.status === "accepted") ? "in_progress" : "delivered";
+  if (task.status === status) return;
+  await patchTask(ctx, taskId, status === "delivered" ? { status, deliveredAt: now } : { status, acceptedAt: task.acceptedAt ?? now });
+}
+
+/**
+ * Stop a multi-runner task taking more runners: the money held for the empty
+ * slots goes back to the poster, and the task carries on with the runners it has.
+ */
+async function closeOpenSlots(ctx: MutationCtx, task: Doc<"tasks">, now: number, byTimeout: boolean) {
+  const runners = await runnersOf(ctx, task._id);
+  // What the escrow still owes the runners on the task; the rest was held for empty slots.
+  const owed = runners.filter((tr) => !isSettled(tr)).reduce((sum, tr) => sum + toMicro(tr.fee), 0);
+  const refund = Math.max(0, (task.escrowMicro ?? 0) - owed);
+  await refundEscrow(ctx, task, refund);
+  await patchTask(ctx, task._id, { slotsClosedAt: now, status: "in_progress", acceptedAt: now });
+  const filled = `${task.acceptedCount || 0}/${task.maxRunners || 1} slots filled`;
+  await systemNote(ctx, task._id, task.posterId, byTimeout
+    ? `No more runners joined within 72 hours, so the open slots were closed (${filled}). $${fmt(refund)} USDC went back to the poster's balance.`
+    : `The poster stopped looking for more runners (${filled}). $${fmt(refund)} USDC went back to their balance.`);
+  await syncMulti(ctx, task._id, now);
+  return refund;
+}
+
+/** Pay one runner of a multi-runner task, and close the task once everyone is settled. */
+async function completeRunner(ctx: MutationCtx, task: Doc<"tasks">, tr: Doc<"taskRunners">, now: number) {
+  const runnerUser = await ctx.db.get(tr.runnerId);
+  if (!runnerUser) throw new ConvexError("Runner gone");
+  const paid = await payRunner(ctx, task, tr.runnerId, toMicro(tr.fee));
+  await ctx.db.patch(tr._id, { status: "completed", completedAt: now, autoReleaseAt: undefined });
+  await ctx.db.patch(tr.runnerId, { deliveries: runnerUser.deliveries + 1 });
+  const newCompleted = (task.completedCount || 0) + 1;
+  await patchTask(ctx, task._id, { completedCount: newCompleted });
+  await syncMulti(ctx, task._id, now);
+  return { runnerUser, newCompleted, ...paid };
+}
+
+/** Pay a single-runner task's runner everything it holds. */
+async function completeSingle(ctx: MutationCtx, task: Doc<"tasks">, now: number) {
+  if (!task.courierId) throw new ConvexError("No runner assigned");
+  const runner = await ctx.db.get(task.courierId);
+  if (!runner) throw new ConvexError("Runner gone");
+  const paid = await payRunner(ctx, task, task.courierId, task.escrowMicro ?? 0);
+  await ctx.db.patch(task.courierId, { deliveries: runner.deliveries + 1 });
+  await patchTask(ctx, task._id, { status: "completed", completedAt: now, completedCount: 1, autoReleaseAt: undefined });
+  return { runner, ...paid };
 }
 
 export const create = mutation({
@@ -215,6 +332,14 @@ export const create = mutation({
     // Multi-runner: escrow = fee * maxRunners. Single: item cost + fee.
     const totalMicro = maxRunners > 1 ? feeMicro * maxRunners : itemMicro + feeMicro;
 
+    // ── How much one account can post ──
+    const openNow = await ctx.db.query("tasks")
+      .withIndex("by_poster_status", (q) => q.eq("posterId", poster._id).eq("status", "open")).take(MAX_OPEN_TASKS);
+    if (openNow.length >= MAX_OPEN_TASKS) {
+      throw new ConvexError(`You already have ${MAX_OPEN_TASKS} open tasks. Wait until some are taken, or cancel some, before posting more.`);
+    }
+    await rateLimit(ctx, "post", poster._id);
+
     const doc: any = {
       title: args.title, category: args.category, details: args.details,
       taskType,
@@ -222,7 +347,7 @@ export const create = mutation({
       itemCost, suggestedFee: args.suggestedFee, items: args.items,
       totalEscrowed: fromMicro(totalMicro), escrowMicro: totalMicro,
       posterId: poster._id, posterName: poster.displayName,
-      maxRunners, acceptedCount: 0, completedCount: 0,
+      maxRunners, acceptedCount: 0, completedCount: 0, bidCount: 0,
       status: "open", createdAt: Date.now(),
     };
 
@@ -274,16 +399,59 @@ export const placeBid = mutation({
     if (toMicro(args.fee, "Bid") <= 0) throw new ConvexError("Bid must be above zero");
     clip(args.comment, LIMITS.comment, "Comment");
     checkPosition(args.lat, args.lng, "Bid");
-    const existing = await ctx.db.query("bids").withIndex("by_task", q => q.eq("taskId", args.taskId)).collect();
-    if (existing.some(b => b.courierId === runner._id)) throw new ConvexError("Already bid");
-    if (existing.length >= 20) throw new ConvexError("Max bids");
+    const existing = await ctx.db.query("bids").withIndex("by_task", q => q.eq("taskId", args.taskId)).take(maxBidRows(task) + 1);
+    const mine = existing.find(b => b.courierId === runner._id);
+    if (mine) throw new ConvexError(mine.rejected ? "The poster turned down your bid on this task" : "Already bid");
+    if (existing.length >= maxBidRows(task)) throw new ConvexError("This task has had too many bids");
+    await rateLimit(ctx, "bid", runner._id);
+
+    // A full bid list doesn't shut experienced runners out: a runner with
+    // more completed jobs (or, on a tie, a better rating) takes the place of
+    // the least experienced bid, which is removed. Brand-new accounts can't
+    // push each other out, so a crowd of them can't hold a task's slots.
+    const open = existing.filter(isOpenBid);
+    let displaced: Doc<"bids"> | null = null;
+    if (open.length >= bidSlots(task)) {
+      const weakest = open.reduce((w, b) =>
+        outranks({ deliveries: w.courierDeliveries, score: w.courierScore }, { deliveries: b.courierDeliveries, score: b.courierScore })
+          || (w.courierDeliveries === b.courierDeliveries && w.courierScore === b.courierScore && b.createdAt > w.createdAt) ? b : w);
+      if (!outranks({ deliveries: runner.deliveries, score: runner.score }, { deliveries: weakest.courierDeliveries, score: weakest.courierScore })) {
+        throw new ConvexError("This task has the most bids it takes. Runners with more completed jobs can still bid.");
+      }
+      displaced = weakest;
+      await ctx.db.delete(weakest._id);
+    }
+
     await ctx.db.patch(runner._id, { lastLat: args.lat, lastLng: args.lng });
-    return await ctx.db.insert("bids", {
+    const bidId = await ctx.db.insert("bids", {
       taskId: args.taskId, courierId: runner._id, courierName: runner.displayName,
       fee: args.fee, comment: args.comment, lat: args.lat, lng: args.lng,
       tripKm: args.tripKm, courierScore: runner.score, courierDeliveries: runner.deliveries,
       accepted: false, createdAt: Date.now(),
     });
+    const shown = existing.filter((b) => !b.rejected).length - (displaced ? 1 : 0) + 1;
+    await ctx.db.patch(args.taskId, { bidCount: shown });
+    return bidId;
+  },
+});
+
+/** The poster turns a bid down: it disappears from the list, and that runner can't bid on the task again. */
+export const rejectBid = mutation({
+  args: { token: v.string(), taskId: v.id("tasks"), bidId: v.id("bids") },
+  handler: async (ctx, { token, taskId, bidId }) => {
+    const poster = await requireUser(ctx, token);
+    const task = await ctx.db.get(taskId);
+    if (!task || task.posterId !== poster._id) throw new ConvexError("Only the poster can turn down bids on this task");
+    if (task.status !== "open") throw new ConvexError("This task is no longer taking bids");
+    const bid = await ctx.db.get(bidId);
+    if (!bid || bid.taskId !== taskId) throw new ConvexError("Invalid bid");
+    if (bid.accepted) throw new ConvexError("This bid was already accepted");
+    if (bid.rejected) return { ok: true };
+    await rateLimit(ctx, "rejectBid", poster._id);
+    await ctx.db.patch(bidId, { rejected: true });
+    const all = await ctx.db.query("bids").withIndex("by_task", (q) => q.eq("taskId", taskId)).take(maxBidRows(task) + 1);
+    await ctx.db.patch(taskId, { bidCount: all.filter((b) => !b.rejected).length });
+    return { ok: true };
   },
 });
 
@@ -297,16 +465,17 @@ export const acceptBid = mutation({
     const maxR = task.maxRunners || 1;
     const accepted = task.acceptedCount || 0;
     const multi = maxR > 1;
-    // For single-runner: must be "open". For multi: "open" or "in_progress" (still filling slots)
-    if (!multi && task.status !== "open") throw new ConvexError("Cannot accept");
-    if (multi && task.status !== "open" && task.status !== "in_progress") throw new ConvexError("Cannot accept");
-    if (multi && accepted >= maxR) throw new ConvexError("All runner slots filled");
+    // Multi-runner tasks stay "open" while their slots fill.
+    if (task.status !== "open") throw new ConvexError("Cannot accept");
+    if (multi && slotsFull(task)) throw new ConvexError(task.slotsClosedAt ? "This task has stopped taking runners" : "All runner slots filled");
     const bid = await ctx.db.get(bidId);
     if (!bid || bid.taskId !== taskId) throw new ConvexError("Invalid bid");
     if (bid.accepted) throw new ConvexError("Bid already accepted");
+    if (bid.rejected) throw new ConvexError("You turned this bid down");
     const escrow = requireFunded(task);
     const bidMicro = toMicro(bid.fee, "Bid");
     await ctx.db.patch(bidId, { accepted: true });
+    const now = Date.now();
 
     // The escrow was sized for the suggested fee. Settle the difference with
     // the poster's balance now, so the escrow always covers what was agreed.
@@ -322,33 +491,44 @@ export const acceptBid = mutation({
       await ctx.db.insert("taskRunners", {
         taskId, runnerId: bid.courierId, runnerName: bid.courierName,
         bidId, fee: bid.fee, status: "accepted",
-        lat: bid.lat, lng: bid.lng, acceptedAt: Date.now(),
+        lat: bid.lat, lng: bid.lng, acceptedAt: now,
       });
       const newAccepted = accepted + 1;
       const allFilled = newAccepted >= maxR;
       await setEscrow(ctx, taskId, newEscrow, {
         status: allFilled ? "in_progress" : "open",
         acceptedCount: newAccepted,
-        acceptedAt: allFilled ? Date.now() : task.acceptedAt,
+        acceptedAt: allFilled ? now : task.acceptedAt,
+        firstAcceptedAt: task.firstAcceptedAt ?? now,
       });
-      await ctx.db.insert("messages", {
-        taskId, senderId: posterId, senderName: "System", role: "system",
-        text: `${bid.courierName} accepted as runner! (${newAccepted}/${maxR} slots filled)`, createdAt: Date.now(),
-      });
+      await systemNote(ctx, taskId, posterId, `${bid.courierName} accepted as runner! (${newAccepted}/${maxR} slots filled)`);
     } else {
       await setEscrow(ctx, taskId, newEscrow, {
         status: "in_progress", courierId: bid.courierId, courierName: bid.courierName,
-        acceptedFee: bid.fee, acceptedAt: Date.now(),
+        acceptedFee: bid.fee, acceptedAt: now,
         acceptedCount: 1,
         courierLat: bid.lat, courierLng: bid.lng,
       });
       const runnerLabel = isDelivery(task) ? "courier" : "runner";
-      await ctx.db.insert("messages", {
-        taskId, senderId: posterId, senderName: "System", role: "system",
-        text: `${bid.courierName} accepted as ${runnerLabel}! Chat open.`, createdAt: Date.now(),
-      });
+      await systemNote(ctx, taskId, posterId, `${bid.courierName} accepted as ${runnerLabel}! Chat open.`);
     }
     return { escrow: fromMicro(newEscrow), charged: fromMicro(delta) };
+  },
+});
+
+/** The poster of a multi-runner task stops looking for more runners and gets the money for empty slots back. */
+export const closeSlots = mutation({
+  args: { token: v.string(), taskId: v.id("tasks") },
+  handler: async (ctx, { token, taskId }) => {
+    const poster = await requireUser(ctx, token);
+    const task = await ctx.db.get(taskId);
+    if (!task || task.posterId !== poster._id) throw new ConvexError("Only the poster can close this task's slots");
+    if (!isMultiRunner(task)) throw new ConvexError("Only tasks for more than one runner have slots to close");
+    if (task.status !== "open" || slotsFull(task)) throw new ConvexError("This task isn't taking runners any more");
+    if ((task.acceptedCount || 0) === 0) throw new ConvexError("No runner has been accepted yet: cancel the task instead to get everything back");
+    const refund = await closeOpenSlots(ctx, task, Date.now(), false);
+    const after = await ctx.db.get(taskId);
+    return { refund: fromMicro(refund), runners: task.acceptedCount || 0, status: after?.status };
   },
 });
 
@@ -363,9 +543,9 @@ export const updateCourierLoc = mutation({
     const multi = isMultiRunner(task);
     if (multi) {
       // Update taskRunner entry location
-      const trs = await ctx.db.query("taskRunners").withIndex("by_task_runner", q => q.eq("taskId", taskId).eq("runnerId", courierId)).collect();
-      if (!trs[0]) return;
-      await ctx.db.patch(trs[0]._id, { lat, lng });
+      const tr = await runnerEntry(ctx, taskId, courierId);
+      if (!tr) return;
+      await ctx.db.patch(tr._id, { lat, lng });
     } else {
       if (task.courierId !== courierId) return;
       await patchTask(ctx, taskId, { courierLat: lat, courierLng: lng });
@@ -374,6 +554,7 @@ export const updateCourierLoc = mutation({
   },
 });
 
+/** A runner hands in their work. Needs the proof the task asks for (lib/proof.ts). */
 export const markDelivered = mutation({
   args: { token: v.string(), taskId: v.id("tasks"), proofData: v.optional(v.string()) },
   handler: async (ctx, { token, taskId, proofData }) => {
@@ -382,66 +563,32 @@ export const markDelivered = mutation({
     if (proofData) clip(proofData, LIMITS.proof, "Proof");
     const task = await ctx.db.get(taskId);
     if (!task) throw new ConvexError("Cannot mark");
-    const multi = isMultiRunner(task);
+    const now = Date.now();
+    const releaseAt = now + RELEASE_AFTER_MS;
+    const note = proofData?.trim() || undefined;
 
-    if (multi) {
-      // A multi-runner task stays "open" until every slot is filled, and
-      // runners accepted early can already deliver.
+    if (isMultiRunner(task)) {
+      // A multi-runner task stays "open" while slots fill, and runners
+      // accepted early can already deliver.
       if (task.status !== "in_progress" && task.status !== "open") throw new ConvexError("Cannot mark");
-      const runners = await ctx.db.query("taskRunners").withIndex("by_task_runner", q => q.eq("taskId", taskId).eq("runnerId", courierId)).collect();
-      const runner = runners[0];
+      const runner = await runnerEntry(ctx, taskId, courierId);
       if (!runner || runner.status !== "accepted") throw new ConvexError("Not assigned to this task");
-      const patch: any = { status: "delivered", deliveredAt: Date.now() };
-      if (proofData) patch.proofData = proofData;
-      await ctx.db.patch(runner._id, patch);
-      await ctx.db.insert("messages", {
-        taskId, senderId: courierId, senderName: "System", role: "system",
-        text: `${user.displayName || "Runner"} submitted proof. Waiting for confirmation.`, createdAt: Date.now(),
-      });
-      // Check if ALL runners delivered → move task to "delivered"
-      const allRunners = await ctx.db.query("taskRunners").withIndex("by_task", q => q.eq("taskId", taskId)).collect();
-      const allFilled = (task.acceptedCount || 0) >= (task.maxRunners || 1);
-      if (allFilled && allRunners.every(r => r.status === "delivered" || r.status === "completed" || r.status === "expired")) {
-        await patchTask(ctx, taskId, { status: "delivered", deliveredAt: Date.now() });
-      }
+      await requireProof(ctx, task, courierId, note);
+      await ctx.db.patch(runner._id, { status: "delivered", deliveredAt: now, autoReleaseAt: releaseAt, ...(note ? { proofData: note } : {}) });
+      await systemNote(ctx, taskId, courierId,
+        `${user.displayName || "Runner"} submitted proof. The poster has 24 hours to confirm or open a dispute; after that this runner is paid automatically.`);
+      await syncMulti(ctx, taskId, now);
     } else {
       if (task.status !== "in_progress" || task.courierId !== courierId) throw new ConvexError("Cannot mark");
-      const patch: any = { status: "delivered", deliveredAt: Date.now() };
-      if (proofData) patch.proofData = proofData;
-      await patchTask(ctx, taskId, patch);
+      await requireProof(ctx, task, courierId, note);
+      await patchTask(ctx, taskId, { status: "delivered", deliveredAt: now, autoReleaseAt: releaseAt, ...(note ? { proofData: note } : {}) });
       const label = isDelivery(task) ? "Marked as delivered" : "Proof submitted";
-      await ctx.db.insert("messages", {
-        taskId, senderId: courierId, senderName: "System", role: "system",
-        text: `${label}. Waiting for confirmation. Auto-releases in 2 hours.`, createdAt: Date.now(),
-      });
+      await systemNote(ctx, taskId, courierId,
+        `${label}. The poster has 24 hours to confirm or open a dispute; after that the runner is paid automatically.`);
     }
+    return { autoReleaseAt: releaseAt };
   },
 });
-
-/** Pay one runner of a multi-runner task and close the task once all are done. */
-async function completeRunner(ctx: MutationCtx, task: Doc<"tasks">, tr: Doc<"taskRunners">, now: number) {
-  const runnerUser = await ctx.db.get(tr.runnerId);
-  if (!runnerUser) throw new ConvexError("Runner gone");
-  const paid = await payRunner(ctx, task, tr.runnerId, toMicro(tr.fee));
-  await ctx.db.patch(tr._id, { status: "completed", completedAt: now });
-  await ctx.db.patch(tr.runnerId, { deliveries: runnerUser.deliveries + 1 });
-  const newCompleted = (task.completedCount || 0) + 1;
-  await patchTask(ctx, task._id, { completedCount: newCompleted });
-  await closeMultiIfDone(ctx, task._id, now);
-  return { runnerUser, newCompleted, ...paid };
-}
-
-/** A multi-runner task is finished when every slot is filled and settled. */
-async function closeMultiIfDone(ctx: MutationCtx, taskId: Id<"tasks">, now: number) {
-  const task = await ctx.db.get(taskId);
-  if (!task) return;
-  const all = await ctx.db.query("taskRunners").withIndex("by_task", q => q.eq("taskId", taskId)).collect();
-  const allFilled = (task.acceptedCount || 0) >= (task.maxRunners || 1);
-  if (!allFilled || !all.every(r => r.status === "completed" || r.status === "expired")) return;
-  await refundEscrow(ctx, task); // anything left over goes back to the poster
-  const anyDone = all.some(r => r.status === "completed");
-  await patchTask(ctx, taskId, { status: anyDone ? "completed" : "refunded", completedAt: now });
-}
 
 export const confirmDelivery = mutation({
   args: {
@@ -455,37 +602,24 @@ export const confirmDelivery = mutation({
     const task = await ctx.db.get(taskId);
     if (!task) throw new ConvexError("Task not found");
     if (task.posterId !== posterId) throw new ConvexError("Unauthorized");
-    const multi = isMultiRunner(task);
     const now = Date.now();
 
-    if (multi) {
-      // Multi-runner: confirm individual runner
+    if (isMultiRunner(task)) {
+      // Multi-runner: confirm one runner. Confirming a disputed runner settles the dispute in their favour.
       if (!runnerId) throw new ConvexError("runnerId required for multi-runner task");
-      const trs = await ctx.db.query("taskRunners").withIndex("by_task_runner", q => q.eq("taskId", taskId).eq("runnerId", runnerId)).collect();
-      const tr = trs[0];
-      if (!tr || tr.status !== "delivered") throw new ConvexError("Runner not delivered");
+      const tr = await runnerEntry(ctx, taskId, runnerId);
+      if (!tr || (tr.status !== "delivered" && tr.status !== "disputed")) throw new ConvexError("Runner not delivered");
       const done = await completeRunner(ctx, task, tr, now);
       await rate(ctx, taskId, posterId, done.runnerUser, ratingScore, ratingComment);
-      await ctx.db.insert("messages", {
-        taskId, senderId: posterId, senderName: "System", role: "system",
-        text: `${done.runnerUser.displayName} confirmed! $${fmt(done.payoutMicro)} paid. (${done.newCompleted}/${task.maxRunners} done)`, createdAt: now,
-      });
+      await systemNote(ctx, taskId, posterId, `${done.runnerUser.displayName} confirmed! $${fmt(done.payoutMicro)} paid. (${done.newCompleted}/${task.maxRunners} done)`);
       return { payout: fromMicro(done.payoutMicro), burn: fromMicro(done.feeMicro), runnerId };
-    } else {
-      if (task.status !== "delivered" && task.status !== "in_progress") throw new ConvexError("Cannot confirm");
-      if (!task.courierId) throw new ConvexError("No runner assigned");
-      const runner = await ctx.db.get(task.courierId);
-      if (!runner) throw new ConvexError("Runner gone");
-      const paid = await payRunner(ctx, task, task.courierId, task.escrowMicro ?? 0);
-      await ctx.db.patch(task.courierId, { deliveries: runner.deliveries + 1 });
-      await patchTask(ctx, taskId, { status: "completed", completedAt: now, completedCount: 1 });
-      await rate(ctx, taskId, posterId, runner, ratingScore, ratingComment);
-      await ctx.db.insert("messages", {
-        taskId, senderId: posterId, senderName: "System", role: "system",
-        text: `Confirmed! $${fmt(paid.payoutMicro)} USDC released. $${fmt(paid.feeMicro)} platform fee.`, createdAt: now,
-      });
-      return { payout: fromMicro(paid.payoutMicro), burn: fromMicro(paid.feeMicro) };
     }
+    // The poster may pay early, or pay despite a dispute (theirs or the runner's).
+    if (!["delivered", "in_progress", "disputed"].includes(task.status)) throw new ConvexError("Cannot confirm");
+    const done = await completeSingle(ctx, task, now);
+    await rate(ctx, taskId, posterId, done.runner, ratingScore, ratingComment);
+    await systemNote(ctx, taskId, posterId, `Confirmed! $${fmt(done.payoutMicro)} USDC released. $${fmt(done.feeMicro)} platform fee.`);
+    return { payout: fromMicro(done.payoutMicro), burn: fromMicro(done.feeMicro) };
   },
 });
 
@@ -495,7 +629,9 @@ export const cancel = mutation({
     const poster = await requireUser(ctx, token);
     const task = await ctx.db.get(taskId);
     if (!task || task.status !== "open" || task.posterId !== poster._id) throw new ConvexError("Cannot cancel");
-    if ((task.acceptedCount || 0) > 0) throw new ConvexError("Cannot cancel: a runner has already been accepted");
+    if ((task.acceptedCount || 0) > 0) {
+      throw new ConvexError("Cannot cancel: a runner has already been accepted. Close the open slots instead to get the money for them back.");
+    }
     const refunded = await refundEscrow(ctx, task);
     await patchTask(ctx, taskId, { status: "cancelled" });
     return { refund: fromMicro(refunded) };
@@ -503,38 +639,72 @@ export const cancel = mutation({
 });
 
 // ── Dispute ──
+// Holds the money until an admin settles it (resolveDispute). On a
+// multi-runner task a dispute is about one runner's part: the poster names
+// the runner, a runner disputes their own.
 export const openDispute = mutation({
-  args: { token: v.string(), taskId: v.id("tasks"), reason: v.string() },
-  handler: async (ctx, { token, taskId, reason }) => {
+  args: { token: v.string(), taskId: v.id("tasks"), reason: v.string(), runnerId: v.optional(v.id("users")) },
+  handler: async (ctx, { token, taskId, reason, runnerId }) => {
     const user = await requireUser(ctx, token);
     const userId = user._id;
     clip(reason, LIMITS.reason, "Reason");
+    if (!reason.trim()) throw new ConvexError("Say what went wrong");
     const task = await ctx.db.get(taskId);
     if (!task) throw new ConvexError("Task not found");
+    const now = Date.now();
+
+    if (isMultiRunner(task)) {
+      const role = task.posterId === userId ? "poster" : "runner";
+      const target = role === "poster" ? runnerId : userId;
+      if (!target) throw new ConvexError("Name the runner whose part you dispute (runnerId)");
+      const tr = await runnerEntry(ctx, taskId, target);
+      if (!tr) throw new ConvexError(role === "poster" ? "That runner isn't on this task" : "Unauthorized");
+      if (tr.status !== "accepted" && tr.status !== "delivered") throw new ConvexError("Cannot dispute");
+      await rateLimit(ctx, "dispute", userId);
+      await ctx.db.patch(tr._id, { status: "disputed", disputeReason: reason, disputeBy: role, disputedAt: now, autoReleaseAt: undefined });
+      await systemNote(ctx, taskId, userId, `⚠️ Dispute opened by ${role} (${user.displayName}) about ${tr.runnerName}'s part: "${reason}". That payment is held until resolved.`);
+      await syncMulti(ctx, taskId, now);
+      return { disputed: tr.runnerId };
+    }
+
     if (task.status !== "in_progress" && task.status !== "delivered") throw new ConvexError("Cannot dispute");
     if (task.posterId !== userId && task.courierId !== userId) throw new ConvexError("Unauthorized");
+    await rateLimit(ctx, "dispute", userId);
     const role = task.posterId === userId ? "poster" : "runner";
-    await patchTask(ctx, taskId, { status: "disputed", disputeReason: reason, disputeBy: role, disputedAt: Date.now() });
-    await ctx.db.insert("messages", {
-      taskId, senderId: userId, senderName: "System", role: "system",
-      text: `⚠️ Dispute opened by ${role} (${user.displayName}): "${reason}". Funds held until resolved.`, createdAt: Date.now(),
-    });
+    await patchTask(ctx, taskId, { status: "disputed", disputeReason: reason, disputeBy: role, disputedAt: now, autoReleaseAt: undefined });
+    await systemNote(ctx, taskId, userId, `⚠️ Dispute opened by ${role} (${user.displayName}): "${reason}". Funds held until resolved.`);
+    return { disputed: task.courierId };
   },
 });
 
-/** Admin (run from the Convex dashboard): settle a disputed task. */
+/** Admin (run from the Convex dashboard): settle a dispute. Multi-runner tasks: name the runner. */
 export const resolveDispute = internalMutation({
-  args: { taskId: v.id("tasks"), resolution: v.union(v.literal("courier"), v.literal("poster")) },
-  handler: async (ctx, { taskId, resolution }) => {
+  args: {
+    taskId: v.id("tasks"),
+    resolution: v.union(v.literal("courier"), v.literal("poster")),
+    runnerId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, { taskId, resolution, runnerId }) => {
     const task = await ctx.db.get(taskId);
-    if (!task || task.status !== "disputed") throw new ConvexError("Not disputed");
+    if (!task) throw new ConvexError("Task not found");
+    const now = Date.now();
+    if (isMultiRunner(task)) {
+      if (!runnerId) throw new ConvexError("runnerId required for multi-runner task");
+      const tr = await runnerEntry(ctx, taskId, runnerId);
+      if (!tr || tr.status !== "disputed") throw new ConvexError("Not disputed");
+      if (resolution === "courier") {
+        const done = await completeRunner(ctx, task, tr, now);
+        return { payTo: "runner", amount: fromMicro(done.payoutMicro) };
+      }
+      const refunded = await refundEscrow(ctx, task, Math.min(toMicro(tr.fee), task.escrowMicro ?? 0));
+      await ctx.db.patch(tr._id, { status: "refunded", completedAt: now });
+      await syncMulti(ctx, taskId, now);
+      return { payTo: "poster", amount: fromMicro(refunded) };
+    }
+    if (task.status !== "disputed") throw new ConvexError("Not disputed");
     if (resolution === "courier") {
-      if (!task.courierId) throw new ConvexError("No runner assigned");
-      const runner = await ctx.db.get(task.courierId);
-      if (runner) await ctx.db.patch(task.courierId, { deliveries: runner.deliveries + 1 });
-      const paid = await payRunner(ctx, task, task.courierId, task.escrowMicro ?? 0);
-      await patchTask(ctx, taskId, { status: "completed", completedAt: Date.now() });
-      return { payTo: "runner", amount: fromMicro(paid.payoutMicro) };
+      const done = await completeSingle(ctx, task, now);
+      return { payTo: "runner", amount: fromMicro(done.payoutMicro) };
     }
     const refunded = await refundEscrow(ctx, task);
     await patchTask(ctx, taskId, { status: "refunded" });
@@ -542,55 +712,57 @@ export const resolveDispute = internalMutation({
   },
 });
 
-// ── Cron: pay runners whose delivery went unconfirmed for 2 hours ──
+// The crons below take an optional `now` so an admin (or the end-to-end
+// tests) can run what would be due at a later time. Internal only.
+const later = { now: v.optional(v.number()) };
+
+// ── Cron: pay runners whose delivery went unconfirmed and undisputed for 24 hours ──
+// Reads only what is due (by_auto_release), so a backlog can't hide newer work.
 export const autoRelease = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    const delivered = await ctx.db.query("tasks").withIndex("by_status", q => q.eq("status", "delivered")).take(100);
-    for (const task of delivered) {
-      if (isMultiRunner(task) || !task.courierId || !task.deliveredAt || now - task.deliveredAt <= TWO_HOURS) continue;
-      const runner = await ctx.db.get(task.courierId);
-      if (!runner) continue;
-      const paid = await payRunner(ctx, task, task.courierId, task.escrowMicro ?? 0);
-      await ctx.db.patch(task.courierId, { deliveries: runner.deliveries + 1 });
-      await patchTask(ctx, task._id, { status: "completed", completedAt: now });
-      await ctx.db.insert("messages", {
-        taskId: task._id, senderId: task.courierId, senderName: "System", role: "system",
-        text: `Auto-released! $${fmt(paid.payoutMicro)} USDC paid to runner (requester did not confirm within 2 hours).`, createdAt: now,
-      });
+  args: later,
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const due = await ctx.db.query("tasks").withIndex("by_auto_release", q => q.gt("autoReleaseAt", 0).lte("autoReleaseAt", now)).take(100);
+    for (const task of due) {
+      if (task.status !== "delivered" || isMultiRunner(task) || !task.courierId) {
+        await ctx.db.patch(task._id, { autoReleaseAt: undefined });
+        continue;
+      }
+      const done = await completeSingle(ctx, task, now);
+      await systemNote(ctx, task._id, task.courierId,
+        `Auto-released! $${fmt(done.payoutMicro)} USDC paid to the runner (not confirmed or disputed within 24 hours).`);
     }
-    const runners = await ctx.db.query("taskRunners").withIndex("by_status", q => q.eq("status", "delivered")).take(100);
+    const runners = await ctx.db.query("taskRunners").withIndex("by_auto_release", q => q.gt("autoReleaseAt", 0).lte("autoReleaseAt", now)).take(100);
     for (const tr of runners) {
-      if (!tr.deliveredAt || now - tr.deliveredAt <= TWO_HOURS) continue;
       const task = await ctx.db.get(tr.taskId);
-      if (!task || task.status === "disputed") continue;
+      if (tr.status !== "delivered" || !task || task.status === "disputed") {
+        await ctx.db.patch(tr._id, { autoReleaseAt: undefined });
+        continue;
+      }
       const done = await completeRunner(ctx, task, tr, now);
-      await ctx.db.insert("messages", {
-        taskId: task._id, senderId: tr.runnerId, senderName: "System", role: "system",
-        text: `Auto-released! $${fmt(done.payoutMicro)} USDC paid to ${done.runnerUser.displayName}.`, createdAt: now,
-      });
+      await systemNote(ctx, task._id, tr.runnerId, `Auto-released! $${fmt(done.payoutMicro)} USDC paid to ${done.runnerUser.displayName}.`);
     }
+    if (due.length === 100 || runners.length === 100) await ctx.scheduler.runAfter(0, internal.tasks.autoRelease, { now: args.now });
   },
 });
 
 // ── Cron: refund work that was accepted but not delivered within 4 hours ──
 export const refundStuck = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    const stuck = await ctx.db.query("tasks").withIndex("by_status", q => q.eq("status", "in_progress")).take(100);
+  args: later,
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const stuck = await ctx.db.query("tasks")
+      .withIndex("by_status_accepted", q => q.eq("status", "in_progress").gt("acceptedAt", 0).lte("acceptedAt", now - DELIVER_WITHIN_MS)).take(100);
     for (const task of stuck) {
-      if (!task.acceptedAt || now - task.acceptedAt <= FOUR_HOURS) continue;
       if (!isMultiRunner(task)) {
-        await refundEscrow(ctx, task);
+        const refunded = await refundEscrow(ctx, task);
         await patchTask(ctx, task._id, { status: "refunded" });
+        await systemNote(ctx, task._id, task.posterId, `Refunded: nothing was delivered within 4 hours. $${fmt(refunded)} USDC went back to the poster's balance.`);
         continue;
       }
       // Multi-runner: only runners who never delivered lose their slot.
-      const all = await ctx.db.query("taskRunners").withIndex("by_task", q => q.eq("taskId", task._id)).collect();
       let refund = 0;
-      for (const tr of all) {
+      for (const tr of await runnersOf(ctx, task._id)) {
         if (tr.status !== "accepted") continue;
         await ctx.db.patch(tr._id, { status: "expired" });
         refund += toMicro(tr.fee);
@@ -598,12 +770,28 @@ export const refundStuck = internalMutation({
       const fresh = await ctx.db.get(task._id);
       if (!fresh) continue;
       await refundEscrow(ctx, fresh, Math.min(refund, fresh.escrowMicro ?? 0));
-      if (all.some(tr => tr.status === "delivered")) {
-        await patchTask(ctx, task._id, { status: "delivered", deliveredAt: now });
-      } else {
-        await closeMultiIfDone(ctx, task._id, now);
-      }
+      // Tasks from before slots could be closed went in progress with slots
+      // still empty; close them so syncMulti can settle the task.
+      if (!slotsFull(fresh)) await ctx.db.patch(task._id, { slotsClosedAt: now });
+      // Nobody is left "accepted", so this moves the task to delivered or settles it.
+      await syncMulti(ctx, task._id, now);
     }
+    if (stuck.length === 100) await ctx.scheduler.runAfter(0, internal.tasks.refundStuck, { now: args.now });
+  },
+});
+
+// ── Cron: multi-runner tasks stop taking runners 72 hours after the first one ──
+export const closeStaleSlots = internalMutation({
+  args: later,
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const stale = await ctx.db.query("tasks")
+      .withIndex("by_status_first_accepted", q => q.eq("status", "open").gt("firstAcceptedAt", 0).lte("firstAcceptedAt", now - FILL_SLOTS_WITHIN_MS)).take(50);
+    for (const task of stale) {
+      if (isMultiRunner(task) && !task.slotsClosedAt && (task.acceptedCount || 0) > 0) await closeOpenSlots(ctx, task, now, true);
+      else await ctx.db.patch(task._id, { firstAcceptedAt: undefined });
+    }
+    if (stale.length === 50) await ctx.scheduler.runAfter(0, internal.tasks.closeStaleSlots, { now: args.now });
   },
 });
 
@@ -617,17 +805,40 @@ async function caller(ctx: QueryCtx, token?: string) {
   return token ? await userForToken(ctx, token) : null;
 }
 
+/** Bids shown for a task: not the ones the poster turned down, except to the runner who made them. */
+async function visibleBids(ctx: QueryCtx, task: Doc<"tasks">, userId?: Id<"users">) {
+  const bids = await ctx.db.query("bids").withIndex("by_task", q => q.eq("taskId", task._id)).order("desc").take(maxBidRows(task));
+  return bids.filter((b) => !b.rejected || b.courierId === userId);
+}
+
 export const listOpen = query({
   args: { token: v.optional(v.string()) },
   handler: async (ctx, { token }) => {
     const user = await caller(ctx, token);
     const tasks = await ctx.db.query("tasks").withIndex("by_status", q => q.eq("status", "open")).order("desc").take(50);
     return await Promise.all(tasks.map(async t => {
-      const bids = await ctx.db.query("bids").withIndex("by_task", q => q.eq("taskId", t._id)).take(21);
-      return { ...taskView(t, await viewerOf(ctx, t, user?._id)), bidCount: bids.length };
+      // Tasks from before the counter: count (up to 21, shown as "20+").
+      const bidCount = t.bidCount ?? (await ctx.db.query("bids").withIndex("by_task", q => q.eq("taskId", t._id)).take(21)).filter((b) => !b.rejected).length;
+      return { ...taskView(t, await viewerOf(ctx, t, user?._id)), bidCount };
     }));
   },
 });
+
+const ACTIVE = ["open", "in_progress", "delivered", "disputed"];
+
+/** The tasks a user posted or is running that aren't finished yet. */
+async function activeTasksOf(ctx: QueryCtx, userId: Id<"users">) {
+  const posted = (await Promise.all(ACTIVE.map((status) => ctx.db.query("tasks")
+    .withIndex("by_poster_status", q => q.eq("posterId", userId).eq("status", status)).order("desc").take(20)))).flat();
+  const running = (await ctx.db.query("tasks").withIndex("by_courier", q => q.eq("courierId", userId)).order("desc").take(20))
+    .filter((t) => ACTIVE.includes(t.status));
+  // Multi-runner tasks where the user is one of the runners
+  const trEntries = await ctx.db.query("taskRunners").withIndex("by_runner", q => q.eq("runnerId", userId)).order("desc").take(50);
+  const trTasks = (await Promise.all(trEntries.filter((tr) => !isSettled(tr)).map((tr) => ctx.db.get(tr.taskId))))
+    .filter((t): t is Doc<"tasks"> => !!t && ACTIVE.includes(t.status));
+  const all = [...posted, ...running, ...trTasks];
+  return all.filter((t, i, a) => a.findIndex(x => x._id === t._id) === i).sort((a, b) => b.createdAt - a.createdAt);
+}
 
 /** The caller's own tasks that are still going: posted, or being run. */
 export const getActive = query({
@@ -635,18 +846,50 @@ export const getActive = query({
   handler: async (ctx, { token }) => {
     const user = await caller(ctx, token);
     if (!user) return [];
-    const userId = user._id;
-    const posted = await ctx.db.query("tasks").withIndex("by_poster", q => q.eq("posterId", userId)).order("desc").take(20);
-    const running = await ctx.db.query("tasks").withIndex("by_courier", q => q.eq("courierId", userId)).order("desc").take(20);
-    // Also find multi-runner tasks where user is a taskRunner
-    const trEntries = await ctx.db.query("taskRunners").withIndex("by_runner", q => q.eq("runnerId", userId)).take(50);
-    const trTaskIds = trEntries.filter(tr => tr.status !== "completed").map(tr => tr.taskId);
-    const trTasks = await Promise.all(trTaskIds.map(id => ctx.db.get(id)));
-    const all = [...posted, ...running, ...trTasks.filter(Boolean) as Doc<"tasks">[]];
-    const unique = all.filter((t, i, a) => a.findIndex(x => x._id === t._id) === i);
-    const active = unique.filter(t => !["completed", "cancelled", "refunded"].includes(t.status));
-    const views = await Promise.all(active.map(async t => taskView(t, await viewerOf(ctx, t, userId))));
-    return views.sort((a, b) => b.createdAt - a.createdAt);
+    const tasks = await activeTasksOf(ctx, user._id);
+    return await Promise.all(tasks.map(async t => taskView(t, await viewerOf(ctx, t, user._id))));
+  },
+});
+
+/**
+ * The caller's unfinished tasks in brief, with what is waiting on whom:
+ * deliveries the poster should check (and when they pay out on their own),
+ * and where the caller's own work stands. For agents (GET /my-tasks) and the
+ * web app's reminder.
+ */
+export const myTasks = query({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }) => {
+    const user = await caller(ctx, token);
+    if (!user) return [];
+    const out = [];
+    for (const t of await activeTasksOf(ctx, user._id)) {
+      const role = await viewerOf(ctx, t, user._id);
+      if (role === "public") continue;
+      const multi = isMultiRunner(t);
+      const runners = multi ? await runnersOf(ctx, t._id) : [];
+      const delivered = multi
+        ? runners.filter((r) => r.status === "delivered").map((r) => ({ runnerId: r.runnerId, runnerName: r.runnerName, deliveredAt: r.deliveredAt, autoReleaseAt: r.autoReleaseAt }))
+        : t.status === "delivered" && t.courierId ? [{ runnerId: t.courierId, runnerName: t.courierName, deliveredAt: t.deliveredAt, autoReleaseAt: t.autoReleaseAt }] : [];
+      const mine = multi ? runners.find((r) => r.runnerId === user._id) : undefined;
+      const need = describeNeed(proofNeeded(t));
+      out.push({
+        taskId: t._id, title: t.title, status: t.status, role,
+        taskType: getTaskType(t), createdAt: t.createdAt,
+        fee: t.acceptedFee ?? t.suggestedFee, escrow: fromMicro(t.escrowMicro ?? 0),
+        maxRunners: t.maxRunners || 1, acceptedCount: t.acceptedCount || 0, bidCount: t.bidCount,
+        proofNeeded: need,
+        ...(role === "poster" ? {
+          awaitingConfirmation: delivered,
+          disputedRunners: multi ? runners.filter((r) => r.status === "disputed").map((r) => r.runnerId) : undefined,
+          canCloseSlots: multi && t.status === "open" && !slotsFull(t) && (t.acceptedCount || 0) > 0,
+        } : {
+          myStatus: multi ? mine?.status : t.status,
+          autoReleaseAt: multi ? mine?.autoReleaseAt : t.autoReleaseAt,
+        }),
+      });
+    }
+    return out;
   },
 });
 
@@ -678,8 +921,7 @@ export const getBids = query({
     if (!task) return [];
     const user = await caller(ctx, token);
     const viewer = await viewerOf(ctx, task, user?._id);
-    const bids = await ctx.db.query("bids").withIndex("by_task", q => q.eq("taskId", taskId)).order("desc").take(50);
-    return bids.map(b => bidView(b, viewer, user?._id));
+    return (await visibleBids(ctx, task, user?._id)).map(b => bidView(b, viewer, user?._id));
   },
 });
 
@@ -690,8 +932,7 @@ export const getTaskRunners = query({
     if (!task) return [];
     const user = await caller(ctx, token);
     const viewer = await viewerOf(ctx, task, user?._id);
-    const runners = await ctx.db.query("taskRunners").withIndex("by_task", q => q.eq("taskId", taskId)).take(100);
-    return runners.map(tr => runnerView(tr, viewer));
+    return (await runnersOf(ctx, taskId)).map(tr => runnerView(tr, viewer));
   },
 });
 

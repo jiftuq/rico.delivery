@@ -15,6 +15,8 @@ import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_money from "../lib/money.js";
 import type * as lib_privacy from "../lib/privacy.js";
+import type * as lib_proof from "../lib/proof.js";
+import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_stats from "../lib/stats.js";
 import type * as oauth from "../oauth.js";
 import type * as payments from "../payments.js";
@@ -38,6 +40,8 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/money": typeof lib_money;
   "lib/privacy": typeof lib_privacy;
+  "lib/proof": typeof lib_proof;
+  "lib/rateLimit": typeof lib_rateLimit;
   "lib/stats": typeof lib_stats;
   oauth: typeof oauth;
   payments: typeof payments;

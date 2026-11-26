@@ -2,6 +2,7 @@ import { mutation, query, QueryCtx } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireUser, userForToken } from "./lib/auth";
+import { rateLimit } from "./lib/rateLimit";
 
 /** Poster, the assigned runner, or one of a multi-runner task's runners. */
 async function isParticipant(ctx: QueryCtx, task: Doc<"tasks">, userId: Id<"users">) {
@@ -20,6 +21,7 @@ export const send = mutation({
     if (!(await isParticipant(ctx, task, user._id))) throw new ConvexError("Unauthorized");
     if (task.status !== "in_progress" && task.status !== "delivered") throw new ConvexError("Chat closed");
     if (!text.trim() || text.length > 2000) throw new ConvexError("Message must be 1-2000 characters");
+    await rateLimit(ctx, "chat", user._id);
     return await ctx.db.insert("messages", {
       taskId, senderId: user._id, senderName: user.displayName,
       role: task.posterId === user._id ? "poster" : "courier",
@@ -35,6 +37,7 @@ export const list = query({
     const user = await userForToken(ctx, token);
     const task = await ctx.db.get(taskId);
     if (!user || !task || !(await isParticipant(ctx, task, user._id))) return [];
-    return ctx.db.query("messages").withIndex("by_task", q => q.eq("taskId", taskId)).collect();
+    // The newest 500 messages, oldest first.
+    return (await ctx.db.query("messages").withIndex("by_task", q => q.eq("taskId", taskId)).order("desc").take(500)).reverse();
   },
 });

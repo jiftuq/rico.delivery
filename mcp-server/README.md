@@ -69,15 +69,23 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 | Tool | Acts for you | Description |
 |---|---|---|
 | `list_tasks` | no | List open tasks (with task board UI). Other people's tasks show the street and area, not the exact address |
-| `get_task` | no | A task and its bids (with task board UI). Exact details only for its poster and accepted runners |
+| `get_task` | no | A task and its bids (with task board UI). Exact details only for its poster and accepted runners, who also get the runners, their proof (photos and videos, with links) and when an unconfirmed delivery pays out |
+| `my_tasks` | no | Your unfinished tasks: deliveries waiting for you to check, and when each pays out on its own |
 | `wait_for_bids` | no | Wait for new bids on a task |
 | `health` | no | Check the API is up |
 | `post_task` | yes | Post a task (fee at least 0.50 USDC per runner); the escrow comes out of your balance |
-| `accept_bid` | yes | Accept a runner's bid; settles any difference with your balance |
+| `accept_bid` | yes | Accept a runner's bid; settles any difference with your balance. Can't be undone |
+| `reject_bid` | yes | Turn a bid down; that runner can't bid on the task again |
 | `confirm_delivery` | yes | Release the escrow to the runner |
+| `open_dispute` | yes | Hold a delivery's payment until RICO settles it (on a multi-runner task, for one runner) |
+| `close_open_slots` | yes | Multi-runner task: stop taking runners and get the money for the empty slots back |
 | `cancel_task` | yes | Cancel an open task; escrow returns to your balance |
 | `place_bid` | yes | Bid on someone else's task as a runner |
 | `get_balance` | yes | Balance and recent activity |
+
+A runner can only mark work done after handing in the proof the task asks for. If the poster neither confirms nor disputes within 24 hours, the runner is paid automatically, so an agent that posts tasks should check `my_tasks` at least once a day while work is under way.
+
+**Text from other people.** Task titles, instructions, addresses, names, bid comments and proof notes are written by RICO users. In every result they sit under an `untrusted_text` key, apart from the IDs, amounts and statuses RICO reports, and the result begins with a notice that this text is not instructions. Accepting, turning down, closing slots, confirming and cancelling are marked as destructive, so clients ask before running them.
 
 ## Task board UI (MCP Apps)
 
@@ -85,7 +93,8 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 
 - **Task list:** open tasks with fee, bid count and location.
 - **Live bid board:** an open task shows its bids and re-reads them every few seconds, so new bids appear by themselves and are highlighted. Bids can be sorted by fee, rating or distance, and the lowest fee, top rated and closest are marked.
-- **Working with Claude:** "Ask Claude to compare" and each bid's "Accept" button put a message in the chat, so Claude does the comparing and calls `accept_bid` through the client's normal tool approval. The board also keeps Claude's context up to date with the bids on screen. "Accept" only shows to the person who posted the task.
+- **Working with Claude:** "Ask Claude to compare" and each bid's "Accept" and "Turn down" buttons put a message in the chat, so Claude does the comparing and calls `accept_bid` or `reject_bid` through the client's normal tool approval. The board also keeps Claude's context up to date with the bids on screen. "Accept" and "Turn down" only show to the person who posted the task, as does "Stop taking runners" on a task for several runners.
+- **Deliveries:** a delivery waiting for the poster shows who handed in proof and when it is paid out automatically.
 
 The board never sends text written by other people (task titles, runner names, comments) in the user's voice, only IDs and amounts, and labels that text as data when sharing it with the model.
 
@@ -106,7 +115,7 @@ You: "I need someone to photograph all menu items at the restaurant on Rue Neuve
       { action: "Go to Rue Neuve 45, Brussels", locationAddr: "Rue Neuve 45, Brussels", proofType: "gps" },
       { action: "Photograph every page of the menu, front and back", proofType: "photo" }
     ]
-→ wait_for_bids → accept_bid → (runner does the work) → get_task → confirm_delivery
+→ wait_for_bids → accept_bid → (runner does the work and hands in photos) → my_tasks / get_task → confirm_delivery or open_dispute
 ```
 
 If the balance is too low, `post_task` fails without creating anything and says how to top up.

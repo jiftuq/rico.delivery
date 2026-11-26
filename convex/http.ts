@@ -37,6 +37,7 @@ function errorResponse(e: any, origin?: string) {
   const message: string = e instanceof ConvexError ? String(e.data) : (e?.message || "Request failed");
   const status = message.startsWith("Not signed in") ? 401
     : message.startsWith("Insufficient balance") ? 402
+    : message.startsWith("Too many") ? 429
     : 400;
   return json({ error: message }, status, origin);
 }
@@ -111,6 +112,26 @@ const cancelTask = authed(async (ctx, token, { taskId }) => {
   return { ok: true, ...result };
 });
 
+// ── POST /reject-bid ── the poster turns a bid down
+const rejectBid = authed(async (ctx, token, { taskId, bidId }) =>
+  ctx.runMutation(api.tasks.rejectBid, { token, taskId, bidId }));
+
+// ── POST /close-slots ── multi-runner: stop taking runners, refund the empty slots
+const closeSlots = authed(async (ctx, token, { taskId }) => {
+  const result = await ctx.runMutation(api.tasks.closeSlots, { token, taskId });
+  return { ok: true, ...result };
+});
+
+// ── POST /dispute ── hold the payment for an admin to settle
+const dispute = authed(async (ctx, token, { taskId, reason, runnerId }) => {
+  if (typeof reason !== "string") throw new ConvexError("Missing reason");
+  const result = await ctx.runMutation(api.tasks.openDispute, { token, taskId, reason, runnerId });
+  return { ok: true, ...result };
+});
+
+// ── GET /my-tasks ── the caller's unfinished tasks and what is waiting on them
+const myTasks = authed(async (ctx, token) => ({ tasks: await ctx.runQuery(api.tasks.myTasks, { token }) }));
+
 // ── POST /deposit ── credit a USDC transfer already sent to the deposit address
 const deposit = authed(async (ctx, token, { txHash }) => {
   if (typeof txHash !== "string") throw new ConvexError("Missing txHash");
@@ -129,7 +150,7 @@ const me = authed(async (ctx, token) => {
 // ── GET /tasks ── open tasks
 const listTasks = open(async (ctx, _url, token) => ({ tasks: await ctx.runQuery(api.tasks.listOpen, { token }) }));
 
-// ── GET /task?id= ── one task with its bids
+// ── GET /task?id= ── one task with its bids, and for the people on it the runners and their proof
 const getTask = open(async (ctx, url, token) => {
   const taskId = url.searchParams.get("id") as Id<"tasks"> | null;
   if (!taskId) throw new ConvexError("Missing ?id= parameter");
@@ -137,7 +158,14 @@ const getTask = open(async (ctx, url, token) => {
   try { task = await ctx.runQuery(api.tasks.getTask, { taskId, token }); } catch { task = null; }
   if (!task) throw new ConvexError("Task not found");
   const bids = await ctx.runQuery(api.tasks.getBids, { taskId, token });
-  return { ...task, bids };
+  const runners = (task.maxRunners || 1) > 1 ? await ctx.runQuery(api.tasks.getTaskRunners, { taskId, token }) : undefined;
+  if (task.viewer === "public") return { ...task, bids, runners };
+  const files = await ctx.runQuery(api.proofs.getProofFiles, { taskId, token });
+  const proofs = files.map((f: any) => ({
+    runnerId: f.runnerId, stepOrder: f.stepOrder, fileType: f.fileType, fileName: f.fileName,
+    caption: f.caption, url: f.url, createdAt: f.createdAt,
+  }));
+  return { ...task, bids, runners, proofs };
 });
 
 // ── CORS preflight ──
@@ -169,7 +197,7 @@ const openapi = httpAction(async (_ctx, request) => {
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId"],
           properties: { taskId: { type: "string" }, bidId: { type: "string" } } } } } },
         responses: { "200": { description: "Bid accepted" } } } },
-      "/confirm-delivery": { post: { operationId: "confirmDelivery", summary: "Confirm completion and release USDC",
+      "/confirm-delivery": { post: { operationId: "confirmDelivery", summary: "Confirm completion and release USDC (otherwise paid automatically 24 h after delivery unless disputed)",
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId"],
           properties: { taskId: { type: "string" }, runnerId: { type: "string" }, ratingScore: { type: "integer" }, ratingComment: { type: "string" } } } } } },
         responses: { "200": { description: "Confirmed, USDC released" } } } },
@@ -177,6 +205,19 @@ const openapi = httpAction(async (_ctx, request) => {
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId"],
           properties: { taskId: { type: "string" } } } } } },
         responses: { "200": { description: "Cancelled, escrow returned to balance" } } } },
+      "/reject-bid": { post: { operationId: "rejectBid", summary: "Turn down a bid on your open task (that runner can't bid on it again)",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","bidId"],
+          properties: { taskId: { type: "string" }, bidId: { type: "string" } } } } } },
+        responses: { "200": { description: "Bid turned down" } } } },
+      "/close-slots": { post: { operationId: "closeSlots", summary: "Multi-runner task: stop taking runners and refund the empty slots",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId"],
+          properties: { taskId: { type: "string" } } } } } },
+        responses: { "200": { description: "Slots closed, money for empty slots returned to balance" } } } },
+      "/dispute": { post: { operationId: "openDispute", summary: "Dispute a delivery: holds the payment until an admin settles it",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","reason"],
+          properties: { taskId: { type: "string" }, reason: { type: "string" }, runnerId: { type: "string", description: "Multi-runner tasks: the runner whose part is disputed" } } } } } },
+        responses: { "200": { description: "Dispute opened" } } } },
+      "/my-tasks": { get: { operationId: "myTasks", summary: "Your unfinished tasks, deliveries waiting for you, and when they pay out automatically", responses: { "200": { description: "Your tasks" } } } },
       "/tasks": { get: { operationId: "listTasks", summary: "List open tasks", security: [], responses: { "200": { description: "Open tasks" } } } },
       "/bid": { post: { operationId: "placeBid", summary: "Bid on a task as a runner",
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["taskId","fee"],
@@ -597,6 +638,13 @@ http.route({ path: "/confirm-delivery", method: "OPTIONS", handler: corsOptions 
 
 http.route({ path: "/cancel-task", method: "POST", handler: cancelTask });
 http.route({ path: "/cancel-task", method: "OPTIONS", handler: corsOptions });
+
+for (const [path, handler] of [["/reject-bid", rejectBid], ["/close-slots", closeSlots], ["/dispute", dispute]] as const) {
+  http.route({ path, method: "POST", handler });
+  http.route({ path, method: "OPTIONS", handler: corsOptions });
+}
+http.route({ path: "/my-tasks", method: "GET", handler: myTasks });
+http.route({ path: "/my-tasks", method: "OPTIONS", handler: corsOptions });
 
 http.route({ path: "/subscribe/bids", method: "GET", handler: subscribeBids });
 http.route({ path: "/subscribe/bids", method: "OPTIONS", handler: corsOptions });

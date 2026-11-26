@@ -166,6 +166,8 @@ paths:
         Confirm that a runner completed the task. Releases USDC payment to the runner on Base.
         For multi-runner tasks, specify the runnerId.
         Optionally include a rating (1-5) and comment.
+        A delivery nobody confirms or disputes is paid automatically 24 hours after the
+        runner hands in proof. To stop that, use /dispute.
       requestBody:
         required: true
         content:
@@ -206,7 +208,10 @@ paths:
     post:
       operationId: cancelTask
       summary: Cancel a task and get USDC refunded
-      description: Cancel an open task. Escrowed USDC is refunded to the poster's wallet on Base.
+      description: |
+        Cancel an open task. The escrowed USDC returns to the poster's RICO balance.
+        Not possible once a runner has been accepted; for a multi-runner task, /close-slots
+        returns the money for the empty slots instead.
       requestBody:
         required: true
         content:
@@ -231,6 +236,104 @@ paths:
                     type: number
                   txHash:
                     type: string
+
+  /my-tasks:
+    get:
+      operationId: myTasks
+      summary: Your unfinished tasks and deliveries waiting for you
+      description: |
+        Tasks you posted or work on that aren't finished: status, deliveries waiting for your
+        confirmation (with when each is paid automatically), and your own status as a runner.
+      responses:
+        '200':
+          description: Your tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      type: object
+
+  /reject-bid:
+    post:
+      operationId: rejectBid
+      summary: Turn down a bid on your open task
+      description: The bid disappears from the list and that runner can't bid on the task again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId, bidId]
+              properties:
+                taskId:
+                  type: string
+                bidId:
+                  type: string
+      responses:
+        '200':
+          description: Bid turned down
+
+  /dispute:
+    post:
+      operationId: openDispute
+      summary: Dispute a delivery
+      description: |
+        Holds the payment until RICO settles the dispute; it is not paid out automatically.
+        On a multi-runner task, the poster names the runner whose part is disputed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId, reason]
+              properties:
+                taskId:
+                  type: string
+                reason:
+                  type: string
+                runnerId:
+                  type: string
+                  description: Multi-runner tasks, as the poster - the runner whose part is disputed
+      responses:
+        '200':
+          description: Dispute opened
+
+  /close-slots:
+    post:
+      operationId: closeSlots
+      summary: Multi-runner task - stop taking runners
+      description: |
+        The money held for the empty slots returns to your RICO balance; the task carries on with
+        the runners already accepted. Empty slots also close by themselves 72 hours after the
+        first runner was accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId]
+              properties:
+                taskId:
+                  type: string
+      responses:
+        '200':
+          description: Slots closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  refund:
+                    type: number
 
   /health:
     get:

@@ -105,6 +105,12 @@ export function useActiveTasks() {
   return useQuery(api.tasks.getActive, token ? { token } : "skip") ?? [];
 }
 
+/** The same tasks in brief: deliveries waiting for the user, and when they pay out on their own. */
+export function useMyTasks() {
+  const token = useToken();
+  return useQuery(api.tasks.myTasks, token ? { token } : "skip") ?? [];
+}
+
 export function useTask(taskId: Id<"tasks"> | null) {
   const token = useToken();
   return useQuery(api.tasks.getTask, taskId ? { taskId, ...(token ? { token } : {}) } : "skip");
@@ -206,7 +212,7 @@ export function useProofUpload() {
   ) => {
     if (!token) throw new Error("Sign in first");
     file = await withoutMetadata(file);
-    const uploadUrl = await generateUrl({ token });
+    const uploadUrl = await generateUrl({ token, taskId });
     const res = await fetch(uploadUrl, {
       method: "POST",
       headers: { "Content-Type": file.type },
@@ -251,6 +257,8 @@ export function useTaskActions() {
     confirmDelivery: useMutation(api.tasks.confirmDelivery),
     cancelTask: useMutation(api.tasks.cancel),
     openDispute: useMutation(api.tasks.openDispute),
+    rejectBid: useMutation(api.tasks.rejectBid),
+    closeSlots: useMutation(api.tasks.closeSlots),
   };
 }
 

@@ -89,6 +89,8 @@
   @media (prefers-reduced-motion: reduce) { .dot.on { animation: none; } }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
   .note { font-size: 12.5px; color: var(--muted); margin: 8px 0 0; }
+  .bid-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; flex-wrap: wrap; }
+  .waiting { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: var(--bg-raised); }
   .empty, .error { color: var(--muted); padding: 14px 0; text-align: center; }
   .error { color: var(--danger); }
 </style>
@@ -188,8 +190,21 @@
     mount(el("p", { class: kind || "empty" }, text));
   }
 
+  /**
+   * Results keep text written by posters and runners under `untrusted_text`,
+   * so the model can tell it from what RICO reports. Put it back in place for
+   * display; it still only ever goes in as text nodes.
+   */
+  function unfence(value) {
+    if (Array.isArray(value)) return value.map(unfence);
+    if (!value || typeof value !== "object") return value;
+    const out = {};
+    for (const [key, v] of Object.entries(value)) if (key !== "untrusted_text") out[key] = unfence(v);
+    return Object.assign(out, value.untrusted_text || {});
+  }
+
   function showResult(result) {
-    const data = result && result.structuredContent;
+    const data = result && unfence(result.structuredContent);
     if (!result || result.isError || !data) {
       const text = result && result.content && result.content[0] && result.content[0].text;
       return showMessage(text || "Something went wrong loading RICO data.", "error");
@@ -218,7 +233,7 @@
       const result = await callTool("get_task", { taskId });
       // Ignore answers that arrive after the user moved on to another view.
       if (live && live.taskId === taskId && result && !result.isError && result.structuredContent) {
-        renderTask(result.structuredContent.task);
+        renderTask(unfence(result.structuredContent).task);
       }
     } catch { /* keep the last good board; the next tick tries again */ }
   }
@@ -300,8 +315,11 @@
     const bids = sorted.map((b) => {
       const diff = num(b.fee, 0) - num(t.suggestedFee, 0);
       const accept = isOpen && t.viewerIsPoster && !b.accepted
-        ? el("button", { class: "btn primary", onclick: () => say(
-            `Accept the ${usdc(b.fee)} bid (bid ID ${b._id}) on my RICO task (task ID ${t._id}).`, note) }, "Accept")
+        ? el("div", { class: "bid-actions" },
+            el("button", { class: "btn", onclick: () => say(
+              `Turn down the ${usdc(b.fee)} bid (bid ID ${b._id}) on my RICO task (task ID ${t._id}).`, note) }, "Turn down"),
+            el("button", { class: "btn primary", onclick: () => say(
+              `Accept the ${usdc(b.fee)} bid (bid ID ${b._id}) on my RICO task (task ID ${t._id}).`, note) }, "Accept"))
         : null;
       return el("div", { class: "bid" + (fresh.includes(b._id) ? " new" : "") },
         el("div", { class: "task-main" },
@@ -334,6 +352,25 @@
       ? el("button", { class: "btn", onclick: () => request("ui/request-display-mode", { mode: "fullscreen" }).catch(() => {}) }, "Expand")
       : null;
 
+    // Deliveries waiting for the poster, and when they pay out on their own.
+    const when = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const delivered = (t.maxRunners || 1) > 1
+      ? (t.runners || []).filter((r) => r.status === "delivered" && r.autoReleaseAt)
+      : t.status === "delivered" && t.autoReleaseAt ? [{ runnerName: t.courierName, autoReleaseAt: t.autoReleaseAt }] : [];
+    const proofCount = (t.proofs || []).length;
+    const waiting = delivered.length
+      ? el("div", { class: "waiting" },
+          delivered.map((r) => el("div", null, (r.runnerName || "The runner") + " handed in proof. ",
+            t.viewerIsPoster ? "Paid automatically " + when(r.autoReleaseAt) + " unless you confirm or dispute first."
+              : "Paid automatically " + when(r.autoReleaseAt) + " unless the poster confirms or disputes first.")),
+          proofCount ? el("div", { class: "meta" }, plural(proofCount, "proof file")) : null)
+      : null;
+    const multiOpen = isOpen && (t.maxRunners || 1) > 1 && (t.acceptedCount || 0) > 0 && (t.acceptedCount || 0) < (t.maxRunners || 1);
+    const closeSlots = multiOpen && t.viewerIsPoster
+      ? el("button", { class: "btn", onclick: () => say(
+          `Stop taking more runners on my RICO task (task ID ${t._id}) and refund the empty slots.`, note) }, "Stop taking runners")
+      : null;
+
     mount(
       el("header", null, el("h1", null, t.title || "Untitled task"), expand, back),
       el("div", { class: "stats" },
@@ -346,12 +383,13 @@
         t.locationAddr || t.pickupAddr || "",
         t.dropoffAddr ? " \u2192 " + t.dropoffAddr : ""),
       t.details ? el("p", null, t.details) : null,
+      waiting,
       el("div", { class: "board-bar" },
         el("h2", null, "Bids \u00b7 " + all.length),
         all.length > 1 ? [sortChip("fee", "Lowest fee"), sortChip("rating", "Best rated"), sortChip("distance", "Closest")] : null,
         liveBadge),
       bids.length ? bids : el("p", { class: "empty" }, isOpen ? "No bids yet. This board will show them as they arrive." : "No bids."),
-      compare ? el("div", { style: "margin-top:10px" }, compare) : null,
+      compare || closeSlots ? el("div", { class: "bid-actions", style: "justify-content:flex-start;margin-top:10px" }, compare, closeSlots) : null,
       note,
       steps.length ? [el("h2", null, "Steps"), el("ol", { class: "steps" }, steps)] : null,
       el("h2", null, "Task ID"),

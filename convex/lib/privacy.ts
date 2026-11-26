@@ -109,9 +109,9 @@ export function bidView(bid: Doc<"bids">, viewer: Viewer, userId?: Id<"users"> |
   return rest;
 }
 
-/** A runner on a multi-runner task: positions and proof only for the people on the task. */
+/** A runner on a multi-runner task: positions, proof and dispute text only for the people on the task. */
 export function runnerView(tr: Doc<"taskRunners">, viewer: Viewer) {
   if (viewer !== "public") return tr;
-  const { lat: _la, lng: _ln, proofData: _pd, ...rest } = tr;
+  const { lat: _la, lng: _ln, proofData: _pd, disputeReason: _dr, ...rest } = tr;
   return rest;
 }
