@@ -16,6 +16,9 @@ crons.interval("close stale runner slots", { minutes: 15 }, internal.tasks.close
 crons.interval("process withdrawals", { minutes: 5 }, internal.payments.processWithdrawals);
 
 crons.interval("purge expired sign-ins", { hours: 6 }, internal.auth.purgeExpired, {});
+
+// Uploads that never became proof (lib/proof.ts, proofs.sweepUploads)
+crons.interval("delete unattached uploads", { minutes: 5 }, internal.proofs.sweepUploads, {});
 crons.interval("purge expired oauth codes", { hours: 1 }, internal.oauth.purgeCodes, {});
 
 export default crons;

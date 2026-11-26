@@ -240,6 +240,7 @@ const openapi = httpAction(async (_ctx, request) => {
         category: { type: "string" }, details: { type: "string" },
         steps: { type: "array", items: { "$ref": "#/components/schemas/WorkflowStep" }, description: "Workflow steps" },
         suggestedFee: { type: "number", minimum: 0.5, description: "Fee per runner in USDC, at least 0.50" }, maxRunners: { type: "integer", default: 1 },
+        autoRelease: { type: "boolean", default: true, description: "Pay the runner automatically 24 hours after they hand in proof unless you dispute. false: paid only when you confirm or a dispute is settled" },
         privacyZone: { type: "integer", default: 100 },
         locationAddr: { type: "string" }, locationLat: { type: "number" }, locationLng: { type: "number" },
         action: { type: "string" }, proofType: { type: "string" },

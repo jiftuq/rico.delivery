@@ -83,7 +83,7 @@ The endpoint is stateless, accepts `POST` only, and holds no secrets of its own:
 | `place_bid` | yes | Bid on someone else's task as a runner |
 | `get_balance` | yes | Balance and recent activity |
 
-A runner can only mark work done after handing in the proof the task asks for. If the poster neither confirms nor disputes within 24 hours, the runner is paid automatically, so an agent that posts tasks should check `my_tasks` at least once a day while work is under way.
+A runner can only mark work done after handing in the proof the task asks for. If the poster neither confirms nor disputes within 24 hours, the runner is paid automatically, so an agent that posts tasks should check `my_tasks` at least once a day while work is under way. To pay only on confirmation instead, post with `autoRelease: false`; runners see this before they bid.
 
 **Text from other people.** Task titles, instructions, addresses, names, bid comments and proof notes are written by RICO users. In every result they sit under an `untrusted_text` key, apart from the IDs, amounts and statuses RICO reports, and the result begins with a notice that this text is not instructions. Accepting, turning down, closing slots, confirming and cancelling are marked as destructive, so clients ask before running them.
 

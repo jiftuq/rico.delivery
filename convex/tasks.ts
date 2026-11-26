@@ -286,6 +286,9 @@ export const create = mutation({
     itemCost: v.optional(v.float64()), suggestedFee: v.float64(),
     items: v.optional(v.array(v.object({ name: v.string(), cost: v.float64() }))),
     maxRunners: v.optional(v.number()),
+    // false: no automatic payment; a delivery is only paid when the poster
+    // confirms or a dispute is settled. Runners see this before they bid.
+    autoRelease: v.optional(v.boolean()),
   },
   handler: async (ctx, { token, ...args }) => {
     const poster = await requireUser(ctx, token);
@@ -349,6 +352,7 @@ export const create = mutation({
       posterId: poster._id, posterName: poster.displayName,
       maxRunners, acceptedCount: 0, completedCount: 0, bidCount: 0,
       status: "open", createdAt: Date.now(),
+      ...(args.autoRelease === false ? { autoRelease: false } : {}),
     };
 
     if (taskType === "delivery") {
@@ -564,8 +568,12 @@ export const markDelivered = mutation({
     const task = await ctx.db.get(taskId);
     if (!task) throw new ConvexError("Cannot mark");
     const now = Date.now();
-    const releaseAt = now + RELEASE_AFTER_MS;
+    // Tasks posted without automatic payment wait for the poster (or a dispute).
+    const releaseAt = task.autoRelease === false ? undefined : now + RELEASE_AFTER_MS;
     const note = proofData?.trim() || undefined;
+    const waitText = releaseAt
+      ? "The poster has 24 hours to confirm or open a dispute; after that the runner is paid automatically."
+      : "This task is paid when the poster confirms; there is no automatic payment. If they don't confirm, the runner can open a dispute.";
 
     if (isMultiRunner(task)) {
       // A multi-runner task stays "open" while slots fill, and runners
@@ -575,18 +583,16 @@ export const markDelivered = mutation({
       if (!runner || runner.status !== "accepted") throw new ConvexError("Not assigned to this task");
       await requireProof(ctx, task, courierId, note);
       await ctx.db.patch(runner._id, { status: "delivered", deliveredAt: now, autoReleaseAt: releaseAt, ...(note ? { proofData: note } : {}) });
-      await systemNote(ctx, taskId, courierId,
-        `${user.displayName || "Runner"} submitted proof. The poster has 24 hours to confirm or open a dispute; after that this runner is paid automatically.`);
+      await systemNote(ctx, taskId, courierId, `${user.displayName || "Runner"} submitted proof. ${waitText}`);
       await syncMulti(ctx, taskId, now);
     } else {
       if (task.status !== "in_progress" || task.courierId !== courierId) throw new ConvexError("Cannot mark");
       await requireProof(ctx, task, courierId, note);
       await patchTask(ctx, taskId, { status: "delivered", deliveredAt: now, autoReleaseAt: releaseAt, ...(note ? { proofData: note } : {}) });
       const label = isDelivery(task) ? "Marked as delivered" : "Proof submitted";
-      await systemNote(ctx, taskId, courierId,
-        `${label}. The poster has 24 hours to confirm or open a dispute; after that the runner is paid automatically.`);
+      await systemNote(ctx, taskId, courierId, `${label}. ${waitText}`);
     }
-    return { autoReleaseAt: releaseAt };
+    return { autoReleaseAt: releaseAt ?? null };
   },
 });
 
@@ -876,6 +882,7 @@ export const myTasks = query({
       out.push({
         taskId: t._id, title: t.title, status: t.status, role,
         taskType: getTaskType(t), createdAt: t.createdAt,
+        autoRelease: t.autoRelease !== false,
         fee: t.acceptedFee ?? t.suggestedFee, escrow: fromMicro(t.escrowMicro ?? 0),
         maxRunners: t.maxRunners || 1, acceptedCount: t.acceptedCount || 0, bidCount: t.bidCount,
         proofNeeded: need,

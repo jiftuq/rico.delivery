@@ -151,6 +151,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
       // Pricing
       suggestedFee: z.number().min(0.5).describe("Fee per runner in USDC (at least 0.50)"),
       maxRunners: z.number().optional().describe("Number of runners needed (default 1, max 100)"),
+      autoRelease: z.boolean().optional().describe("Pay the runner automatically 24 hours after they hand in proof, unless disputed (default true). With false the runner is paid only when you confirm, or when RICO settles a dispute; runners see this before they bid."),
       privacyZone: z.number().optional().describe("Privacy zone radius in meters (100-500)"),
     },
     async (args) => {
@@ -221,6 +222,7 @@ export function createRicoServer({ apiKey = process.env.RICO_API_KEY, maxWaitSec
         itemCost: t.itemCost || undefined,
         maxRunners: t.maxRunners || 1,
         accepted: t.acceptedCount || 0,
+        autoRelease: t.autoRelease !== false,
         bidCount: t.bidCount || 0,
         location: t.locationAddr || t.pickupAddr,
         dropoff: t.dropoffAddr,

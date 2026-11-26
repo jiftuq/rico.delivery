@@ -348,6 +348,11 @@ const noneTask = await task(pr, { proofType: "none", suggestedFee: 1, steps: [{ 
 await accept(pr, noneTask, await bid(pw, noneTask, 1));
 await deliver(pw, noneTask);
 ok((await getT(pr, noneTask)).status === "delivered", "no proof asked for: none needed");
+const manual = await task(pr, { proofType: "text", suggestedFee: 1, autoRelease: false });
+ok((await c.query(api.tasks.getTask, { taskId: manual })).autoRelease === false, "a task posted without automatic payment says so, before anyone bids");
+await accept(pr, manual, await bid(pw, manual, 1));
+const mdManual = await deliver(pw, manual, "Done");
+ok(mdManual.autoReleaseAt === null && (await getT(pr, manual)).autoReleaseAt === undefined, "its delivery gets no payout time");
 const delTask = await task(pr, { taskType: "delivery", category: "delivery", pickupAddr: "Rue A 1", pickupLat: 50.85, pickupLng: 4.35, dropoffAddr: "Rue B 2", dropoffLat: 50.86, dropoffLng: 4.36, suggestedFee: 1 });
 await accept(pr, delTask, await bid(pw, delTask, 1));
 await rejects(deliver(pw, delTask), "a delivery with no proof type still needs a note or a photo", /a note or a photo/);
@@ -377,6 +382,9 @@ const prBal = await bal(pr);
 run("tasks:autoRelease", { now: Date.now() + 25 * H });
 ok((await getT(pr, textTask)).status === "completed", "paid out after 24 hours with no answer from the poster");
 ok((await getT(pr, noneTask)).status === "disputed", "a disputed delivery isn't paid out");
+ok((await getT(pr, manual)).status === "delivered", "a task without automatic payment isn't paid out after 24 hours");
+await c.mutation(api.tasks.confirmDelivery, { token: pr.token, taskId: manual });
+ok((await getT(pr, manual)).status === "completed", "it's paid when the poster confirms");
 run("tasks:resolveDispute", { taskId: noneTask, resolution: "poster" });
 ok((await getT(pr, noneTask)).status === "refunded" && near(await bal(pr), prBal + 1), "the admin can settle it for the poster");
 
@@ -474,6 +482,24 @@ const pend = await c.action(api.auth.startSignIn, { walletAddress: pa.address })
 run("auth:purgeExpired", { now: Date.now() + 11 * 60e3 });
 await rejects(c.action(api.auth.finishSignIn, { nonce: pend.nonce, signature: await pa.signMessage({ message: pend.message }) }), "expired sign-in requests are cleaned up", /expired|already used/);
 ok((await c.query(api.wallet.summary, { token: appTok })) !== null, "a live app token survives the cleanup");
+
+// ── L1: a file that never becomes proof doesn't stay online ──
+console.log("Uploads that never became proof");
+const sw = await signIn(), swr = await signIn(); await fund(sw, 5);
+const swT = await task(sw, { suggestedFee: 1 });
+await accept(sw, swT, await bid(swr, swT, 1));
+const upload = async (type) => { const url = await c.mutation(api.proofs.generateUploadUrl, { token: swr.token, taskId: swT }); return (await (await fetch(url, { method: "POST", headers: { "Content-Type": type }, body: new Uint8Array([255, 216, 255, 224]) })).json()).storageId; };
+const keep = (storageId) => c.mutation(api.proofs.saveProofFile, { token: swr.token, taskId: swT, storageId, fileType: "image/jpeg" });
+const page = await upload("text/html"), photo1 = await upload("image/jpeg");
+run("proofs:sweepUploads", {});
+await rejects(keep(page), "an uploaded web page is deleted at the next cleanup", /Upload not found/);
+await keep(photo1);
+ok(true, "a fresh photo can still be attached after the cleanup");
+const photo2 = await upload("image/jpeg");
+run("proofs:sweepUploads", { now: Date.now() + 11 * 60e3 });
+await rejects(keep(photo2), "a photo nobody attached is deleted after 10 minutes", /Upload not found/);
+const kept = (await c.query(api.proofs.getProofFiles, { taskId: swT, token: sw.token })).find((f) => f.storageId === photo1);
+ok(kept && (await fetch(kept.url)).status === 200, "attached proof stays");
 
 console.log("Ledger adds up");
 for (const [n, u] of [["poster", poster], ["runner", runner], ["runner2", runner2]]) {

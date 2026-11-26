@@ -96,6 +96,9 @@ export default defineSchema({
     disputedAt: v.optional(v.number()),
     // Single-runner tasks: when an unconfirmed, undisputed delivery pays out.
     autoReleaseAt: v.optional(v.number()),
+    // false: the poster chose no automatic payment when posting, so a delivery
+    // is only paid when they confirm (or a dispute is settled). Missing = on.
+    autoRelease: v.optional(v.boolean()),
     // Multi-runner tasks: when the first runner was accepted, and when the
     // poster (or the timeout) stopped taking more runners.
     firstAcceptedAt: v.optional(v.number()),
@@ -178,7 +181,8 @@ export default defineSchema({
   })
     .index("by_task", ["taskId"])
     .index("by_task_step", ["taskId", "stepOrder"])
-    .index("by_runner", ["runnerId"]),
+    .index("by_runner", ["runnerId"])
+    .index("by_storage", ["storageId"]),
 
   // Saved workflow templates — reusable by users
   savedWorkflows: defineTable({
@@ -304,6 +308,12 @@ export default defineSchema({
     key: v.string(),
     value: v.number(),
   }).index("by_key", ["key"]),
+
+  // Where a background job got to, e.g. the upload cleanup's last file.
+  cursors: defineTable({
+    name: v.string(),
+    value: v.number(),
+  }).index("by_name", ["name"]),
 
   // Per-account rate limits (lib/rateLimit.ts): one token bucket per action and user.
   rateLimits: defineTable({

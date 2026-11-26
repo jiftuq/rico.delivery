@@ -415,6 +415,12 @@ components:
           type: integer
           default: 1
           description: Number of runners needed (1-100)
+        autoRelease:
+          type: boolean
+          default: true
+          description: |
+            Pay the runner automatically 24 hours after they hand in proof, unless disputed.
+            false - the runner is paid only when you confirm or a dispute is settled (runners see this before bidding).
         privacyZone:
           type: integer
           default: 100

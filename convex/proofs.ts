@@ -1,9 +1,10 @@
-import { mutation, query, QueryCtx } from "./_generated/server";
+import { internalMutation, mutation, query, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { requireUser, userForToken } from "./lib/auth";
 import { viewerOf } from "./lib/privacy";
-import { MAX_PROOFS_PER_TASK, checkUpload, isWorkingOn } from "./lib/proof";
+import { MAX_PROOFS_PER_TASK, checkUpload, isMedia, isWorkingOn } from "./lib/proof";
 import { rateLimit } from "./lib/rateLimit";
 
 // Proof photos and videos from runners. Only a runner working on a task can
@@ -87,4 +88,44 @@ export const getStepProofs = query({
   handler: async (ctx, { taskId, stepOrder, token }) =>
     forParticipants(ctx, taskId, token, () =>
       ctx.db.query("proofFiles").withIndex("by_task_step", (q) => q.eq("taskId", taskId).eq("stepOrder", stepOrder)).take(MAX_PROOFS_PER_TASK)),
+});
+
+// ── Cron: delete uploads that never became proof ──
+// Whoever uploads a file can open its storage link, so a file that isn't
+// attached to a task must not stay around: that would make RICO free hosting
+// for anything, including fake web pages. A photo or video gets 10 minutes to
+// be attached (the app attaches it right away); anything else can never be
+// attached, so it goes at the next run. Proof files are the only thing this
+// app keeps in file storage.
+const ATTACH_WITHIN_MS = 10 * 60 * 1000;
+const SWEEP_BATCH = 200;
+
+export const sweepUploads = internalMutation({
+  args: { now: v.optional(v.number()) }, // a later time, for admins and tests
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const cursor = await ctx.db.query("cursors").withIndex("by_name", (q) => q.eq("name", "uploads")).unique();
+    const since = cursor?.value ?? 0;
+    const files = await ctx.db.system.query("_storage")
+      .withIndex("by_creation_time", (q) => q.gt("_creationTime", since)).take(SWEEP_BATCH);
+    // `reached` only moves past files that are settled, so a photo still
+    // waiting to be attached is looked at again next time; the files after it
+    // are still checked now.
+    let reached = since, waiting = false, deleted = 0;
+    for (const f of files) {
+      const attached = await ctx.db.query("proofFiles").withIndex("by_storage", (q) => q.eq("storageId", f._id)).first();
+      if (!attached) {
+        if (isMedia(f.contentType) && now - f._creationTime < ATTACH_WITHIN_MS) { waiting = true; continue; }
+        await ctx.storage.delete(f._id);
+        deleted++;
+      }
+      if (!waiting) reached = f._creationTime;
+    }
+    if (reached !== since) {
+      if (cursor) await ctx.db.patch(cursor._id, { value: reached });
+      else await ctx.db.insert("cursors", { name: "uploads", value: reached });
+    }
+    if (files.length === SWEEP_BATCH && reached !== since) await ctx.scheduler.runAfter(0, internal.proofs.sweepUploads, { now: args.now });
+    return { checked: files.length, deleted };
+  },
 });

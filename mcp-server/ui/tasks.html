@@ -355,14 +355,15 @@
     // Deliveries waiting for the poster, and when they pay out on their own.
     const when = (ms) => new Date(ms).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
     const delivered = (t.maxRunners || 1) > 1
-      ? (t.runners || []).filter((r) => r.status === "delivered" && r.autoReleaseAt)
-      : t.status === "delivered" && t.autoReleaseAt ? [{ runnerName: t.courierName, autoReleaseAt: t.autoReleaseAt }] : [];
+      ? (t.runners || []).filter((r) => r.status === "delivered")
+      : t.status === "delivered" ? [{ runnerName: t.courierName, autoReleaseAt: t.autoReleaseAt }] : [];
     const proofCount = (t.proofs || []).length;
+    const payNote = (r) => r.autoReleaseAt
+      ? "Paid automatically " + when(r.autoReleaseAt) + (t.viewerIsPoster ? " unless you confirm or dispute first." : " unless the poster confirms or disputes first.")
+      : t.viewerIsPoster ? "Paid when you confirm." : "Paid when the poster confirms.";
     const waiting = delivered.length
       ? el("div", { class: "waiting" },
-          delivered.map((r) => el("div", null, (r.runnerName || "The runner") + " handed in proof. ",
-            t.viewerIsPoster ? "Paid automatically " + when(r.autoReleaseAt) + " unless you confirm or dispute first."
-              : "Paid automatically " + when(r.autoReleaseAt) + " unless the poster confirms or disputes first.")),
+          delivered.map((r) => el("div", null, (r.runnerName || "The runner") + " handed in proof. " + payNote(r))),
           proofCount ? el("div", { class: "meta" }, plural(proofCount, "proof file")) : null)
       : null;
     const multiOpen = isOpen && (t.maxRunners || 1) > 1 && (t.acceptedCount || 0) > 0 && (t.acceptedCount || 0) < (t.maxRunners || 1);
@@ -380,6 +381,7 @@
         stat("Status", (t.status || "\u2013").replace(/_/g, " ")),
         stat("Runners", (t.acceptedCount || 0) + "/" + (t.maxRunners || 1))),
       el("div", { class: "meta" }, el("span", { class: "chip" }, t.taskType || "delivery"), " ",
+        t.autoRelease === false ? [el("span", { class: "chip" }, "paid on confirmation only"), " "] : null,
         t.locationAddr || t.pickupAddr || "",
         t.dropoffAddr ? " \u2192 " + t.dropoffAddr : ""),
       t.details ? el("p", null, t.details) : null,

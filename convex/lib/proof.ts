@@ -22,6 +22,12 @@ export const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const IMAGE_TYPES = /^image\/(jpeg|png|webp|heic|heif|gif)$/;
 const VIDEO_TYPES = /^video\/(mp4|quicktime|webm|3gpp)$/;
 
+/** A file type that can be attached as proof. */
+export const isMedia = (contentType?: string) => {
+  const type = (contentType ?? "").toLowerCase();
+  return IMAGE_TYPES.test(type) || VIDEO_TYPES.test(type);
+};
+
 export type ProofNeed = { photo: boolean; video: boolean; note: boolean };
 
 export function proofNeeded(task: Doc<"tasks">): ProofNeed {

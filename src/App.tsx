@@ -300,7 +300,7 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
       <div style={{flex:1,minWidth:0}}>
         <div style={S.cardCat}>{CATS.find(c=>c.id===task.category)?.i||"⚡"} {task.category}{!isDel&&task.taskType?` · ${task.taskType}`:""}</div>
         <div style={{fontSize:15,fontWeight:600,color:"#fff",marginBottom:3}}>{task.title}</div>
-        <div style={{fontSize:11,color:"#444"}}>{t("by")} <span style={{color:"#00ff87"}}>{task.posterName}</span> · {bids.length} {bids.length!==1?t("bids"):t("bid")}{multi&&<span style={{marginLeft:6,fontSize:9,color:"#ffd000",background:"rgba(255,208,0,0.06)",border:"1px solid rgba(255,208,0,0.12)",padding:"1px 6px",borderRadius:4}}>👥 {task.acceptedCount||0}/{maxR}</span>}{!isDel&&task.proofType&&task.proofType!=="none"?<span style={{marginLeft:6,fontSize:9,color:"#a855f7",background:"rgba(168,85,247,0.06)",border:"1px solid rgba(168,85,247,0.12)",padding:"1px 6px",borderRadius:4}}>📸 {task.proofType}</span>:null}</div>
+        <div style={{fontSize:11,color:"#444"}}>{t("by")} <span style={{color:"#00ff87"}}>{task.posterName}</span> · {bids.length} {bids.length!==1?t("bids"):t("bid")}{multi&&<span style={{marginLeft:6,fontSize:9,color:"#ffd000",background:"rgba(255,208,0,0.06)",border:"1px solid rgba(255,208,0,0.12)",padding:"1px 6px",borderRadius:4}}>👥 {task.acceptedCount||0}/{maxR}</span>}{!isDel&&task.proofType&&task.proofType!=="none"?<span style={{marginLeft:6,fontSize:9,color:"#a855f7",background:"rgba(168,85,247,0.06)",border:"1px solid rgba(168,85,247,0.12)",padding:"1px 6px",borderRadius:4}}>📸 {task.proofType}</span>:null}{task.autoRelease===false?<span title="The runner is paid only when the poster confirms" style={{marginLeft:6,fontSize:9,color:"#ffa500",background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.15)",padding:"1px 6px",borderRadius:4}}>💸 paid on confirmation</span>:null}</div>
       </div>
       <div className="dz-pricing-desk" style={{textAlign:"right",minWidth:110,flexShrink:0}}>
         {isDel&&<div style={S.pr}><span style={S.prl}>Items</span><span style={S.prv}>{itemCost}</span></div>}
@@ -418,8 +418,8 @@ function TaskCard({task,userLoc}:{task:any;userLoc:[number,number]|null}){
           </div>)}
         </div>}
         {task.status==="delivered"&&isOwner&&!multi&&<button style={{...S.confirmBtn,padding:16,fontSize:14}} onClick={()=>{hap.heavy();setShowRating({name:task.courierName||"Runner"})}}>✓ {t("confirm")} · ${total.toFixed(2)} USDC</button>}
-        {task.status==="delivered"&&isOwner&&!multi&&<div style={{fontSize:11,color:"#00b4ff",marginTop:6}}>⏳ Check the proof below. If you don't confirm or open a dispute, the runner is paid automatically {task.autoReleaseAt?when(task.autoReleaseAt):"24 hours after handing it in"}.</div>}
-        {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ Waiting for the poster to confirm. You're paid automatically {task.autoReleaseAt?when(task.autoReleaseAt):"24 hours after handing in proof"} unless they open a dispute.</div>}
+        {task.status==="delivered"&&isOwner&&!multi&&<div style={{fontSize:11,color:"#00b4ff",marginTop:6}}>⏳ {task.autoRelease===false?"Check the proof below, then confirm to pay the runner, or open a dispute.":`Check the proof below. If you don't confirm or open a dispute, the runner is paid automatically ${task.autoReleaseAt?when(task.autoReleaseAt):"24 hours after handing it in"}.`}</div>}
+        {task.status==="delivered"&&isCourier&&!multi&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.04)",border:"1px solid rgba(0,180,255,0.12)",marginTop:8,fontSize:12,color:"#00b4ff"}}>⏳ {task.autoRelease===false?"Waiting for the poster to confirm. This task has no automatic payment: if they don't confirm, open a dispute.":`Waiting for the poster to confirm. You're paid automatically ${task.autoReleaseAt?when(task.autoReleaseAt):"24 hours after handing in proof"} unless they open a dispute.`}</div>}
         {task.proofData&&!multi&&<div style={{padding:10,borderRadius:10,background:"rgba(168,85,247,0.04)",border:"1px solid rgba(168,85,247,0.12)",marginTop:8,fontSize:12,color:"#a855f7"}}>📸 {t("proof_lbl")}: {task.proofData}</div>}
         {/* Uploaded proof files */}
         {proofFiles.length>0&&<div style={{marginTop:8}}>
@@ -492,7 +492,7 @@ function TaskListView({userLoc}:{userLoc:[number,number]|null}){
       <h1 style={{fontSize:28,fontWeight:800,color:"#fff",letterSpacing:1,margin:0}}>{t("tagline")}</h1>
       <p style={{fontSize:15,color:"#00ff87",marginTop:6,fontWeight:500}}>{t("tagline2")}</p>
     </div>
-    {toCheck.length>0&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.05)",border:"1px solid rgba(0,180,255,0.2)",marginBottom:14,fontSize:12,color:"#00b4ff",lineHeight:1.5}}>📸 {toCheck.length===1?"1 delivery is":`${toCheck.length} deliveries are`} waiting for you to check the proof. Each one is paid automatically 24 hours after it came in, unless you confirm it or open a dispute first{soonest?` (next: ${when(soonest)})`:""}.</div>}
+    {toCheck.length>0&&<div style={{padding:12,borderRadius:12,background:"rgba(0,180,255,0.05)",border:"1px solid rgba(0,180,255,0.2)",marginBottom:14,fontSize:12,color:"#00b4ff",lineHeight:1.5}}>📸 {toCheck.length===1?"1 delivery is":`${toCheck.length} deliveries are`} waiting for you to check the proof.{soonest?` The next automatic payment is ${when(soonest)}, unless you confirm or open a dispute before then.`:" Confirm to pay the runner, or open a dispute."}</div>}
     <AgentWorkflows/>
     <h2 style={{fontSize:22,fontWeight:700,color:"#fff"}}>{t("live_tasks")}</h2>
     <p style={{fontSize:12,color:"#3a3a4a",marginTop:2}}>{openTasks.length} {t("open_tap")}</p>
@@ -551,6 +551,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
   const[fee,setFee]=useState("");
   const[maxRunners,setMaxRunners]=useState("1");
   const[privacyZone,setPrivacyZone]=useState("100");
+  const[autoPay,setAutoPay]=useState(true); // pay the runner 24 h after proof unless disputed
   const[details,setDetails]=useState("");
   const[ok,setOk]=useState(false);
   const[showSaved,setShowSaved]=useState(false);
@@ -601,6 +602,7 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
         title,category:wp?.cat||"custom",details:details||filledSteps.map((s,i)=>`${i+1}. ${s.action}`).join(" → "),
         taskType:wp?.taskType||"gather-info",privacyZone:parseInt(privacyZone)||100,
         suggestedFee:feePerRunner,maxRunners:nRunners,token,
+        ...(autoPay?{}:{autoRelease:false}),
         steps:filledSteps.map((s,i)=>({order:i+1,action:s.action,locationAddr:s.locationAddr||undefined,locationLat:s.locationLat||undefined,locationLng:s.locationLng||undefined,proofType:s.proofType!=="none"?s.proofType:undefined,requirements:s.requirements||undefined,status:"pending"})),
       };
       if(isDel&&firstLoc&&lastLoc){
@@ -684,6 +686,10 @@ function PostView({userLoc}:{userLoc:[number,number]|null}){
         <div><label style={S.fLbl}>👥 Runners needed</label><input type="number" min="1" max="100" style={{...S.fInp,fontSize:14,padding:12}} value={maxRunners} onChange={e=>setMaxRunners(e.target.value)}/></div>
         <div><label style={S.fLbl}>{t("privacy")}</label><select style={{...S.fInp,fontSize:14,padding:12}} value={privacyZone} onChange={e=>setPrivacyZone(e.target.value)}><option value="100">{t("privacy_100")}</option><option value="200">{t("privacy_200")}</option><option value="300">{t("privacy_300")}</option><option value="500">{t("privacy_500")}</option></select></div>
       </div>
+      <label style={{display:"flex",gap:10,alignItems:"flex-start",marginTop:10,fontSize:12,color:"#999",lineHeight:1.5,cursor:"pointer"}}>
+        <input type="checkbox" checked={autoPay} onChange={e=>setAutoPay(e.target.checked)} style={{marginTop:3,accentColor:"#00ff87"}}/>
+        <span><span style={{color:"#fff"}}>Pay automatically</span> 24 hours after the runner hands in proof, unless I dispute. Turned off, the runner is only paid when you confirm; runners see this before they bid.</span>
+      </label>
 
       {/* Escrow summary — shows workflow + pricing */}
       <div style={{...S.escBox,marginTop:12}}>
